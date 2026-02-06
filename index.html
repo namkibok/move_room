@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 집 꾸미기 (모바일 스크롤 수정)</title>
+    <title>3D 집 꾸미기 (터치 오류 수정)</title>
     <style>
         body {
             margin: 0;
@@ -89,6 +89,7 @@
             /* 모바일 스크롤 허용 설정 */
             touch-action: pan-y; 
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
         }
         
         @media (max-width: 768px) {
@@ -349,17 +350,72 @@
             window.addEventListener('mousemove', onMouseMove, false);
             window.addEventListener('mouseup', onMouseUp, false);
             
+            // 모바일 터치 이벤트 리스너 등록
             canvas.addEventListener('touchstart', onTouchStart, {passive: false});
             window.addEventListener('touchmove', onTouchMove, {passive: false});
-            window.addEventListener('touchend', onMouseUp, false);
+            window.addEventListener('touchend', onMouseUp, false); // touchend는 mouseup과 로직 공유
 
             window.addEventListener('pointermove', onMouseMove, false);
             window.addEventListener('pointerup', onMouseUp, false);
 
             addNewRoom(40, 40, "내 방");
+
+            // UI 패널 스크롤 및 3D 제어 간섭 처리
+            const uiPanel = document.getElementById('ui-layer');
+            
+            // 터치 시작: 패널이나 버튼이면 3D 제어 끄고 스크롤 허용
+            uiPanel.addEventListener('touchstart', function(e) {
+                controls.enabled = false; 
+                e.stopPropagation(); // 캔버스로 이벤트 전달 막음
+            }, { passive: false });
+
+            // 터치 이동: 패널 내부 스크롤 허용, 3D 제어는 여전히 꺼둠
+            uiPanel.addEventListener('touchmove', function(e) {
+                e.stopPropagation(); 
+            }, { passive: false });
+
+            // 터치 종료: 잠시 후 3D 제어 복구 (드래그 중이 아닐 때)
+            uiPanel.addEventListener('touchend', function(e) {
+                setTimeout(() => {
+                    if (!isDragging) {
+                        controls.enabled = true;
+                        if(is2D) controls.enableRotate = false;
+                    }
+                }, 100);
+            }, { passive: false });
+
+            // 마우스 이벤트 차단 (데스크탑)
+            uiPanel.addEventListener('mouseenter', () => { controls.enabled = false; });
+            uiPanel.addEventListener('mouseleave', () => { 
+                if(!isDragging) {
+                    controls.enabled = true; 
+                    if(is2D) controls.enableRotate = false;
+                }
+            });
+            uiPanel.addEventListener('wheel', (e) => { e.stopPropagation(); });
+            uiPanel.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+
             animate();
         }
 
+        // --- 터치 이벤트 핸들러 (누락되었던 부분 복구) ---
+        function onTouchStart(e) {
+            // UI 요소 터치 시에는 3D 씬 조작(선택/이동)을 하지 않음
+            if(e.target.closest('#ui-layer') || e.target.closest('#ui-toggle-btn')) return;
+            
+            e.preventDefault(); 
+            onMouseDown(e); 
+        }
+
+        function onTouchMove(e) {
+            // UI 내부 터치 시에는 3D 씬 조작 안함 (스크롤은 CSS touch-action이 처리)
+            if(e.target.closest('#ui-layer')) return;
+
+            e.preventDefault();
+            onMouseMove(e);
+        }
+
+        // --- 방(Room) 관리 ---
         function handleAddRoom() {
             const nameInput = document.getElementById('newRoomName');
             let name = nameInput.value.trim();
@@ -472,6 +528,7 @@
             deselectObject();
         }
 
+        // --- 가구 관리 ---
         function handleAddCustom() {
             const nameInput = document.getElementById('newFurnitureName');
             const typeSelect = document.getElementById('newFurnitureType');
@@ -741,24 +798,6 @@
             if(selectedObject && selectedObject.userData.isFurniture) deselectObject();
         }
 
-        function onTouchStart(e) { 
-            // UI 내부 터치 시 기본 동작 허용 (스크롤 등), 3D 조작 차단
-            if (e.target.closest('#ui-layer') || e.target.closest('#ui-toggle-btn')) {
-                return;
-            }
-            e.preventDefault(); 
-            onMouseDown(e); 
-        }
-        
-        function onTouchMove(e) { 
-            // UI 내부 터치 시 스크롤 허용
-            if (e.target.closest('#ui-layer')) {
-                return;
-            }
-            e.preventDefault(); 
-            onMouseMove(e); 
-        }
-
         function onMouseDown(event) {
             // UI 패널 클릭 시 캔버스 로직 무시
             if (event.target.closest('#ui-layer') || event.target.closest('#ui-toggle-btn')) return;
@@ -841,6 +880,7 @@
                             selectedObject.parent.worldToLocal(targetWorldPos);
                         }
                         
+                        // [이동 제한 로직 적용]
                         const room = selectedObject.parent;
                         if(room && room.userData.isRoom) {
                             const roomW = room.userData.w;
@@ -889,6 +929,8 @@
             
             if (obj.userData.isFloor) {
                 activeRoom = obj.parent; 
+                // [수정] 색상을 덮어쓰지 않고 emissive로 강조
+                // obj.material.color.setHex(0xaaddff); 
                 obj.material.emissive.setHex(0x444444); 
                 updateActiveRoomDisplay();
                 
@@ -924,10 +966,13 @@
         function deselectObject() {
             if(!selectedObject) return;
 
+            // 회전 복구
             if(!is2D) controls.enableRotate = true;
 
             if (selectedObject.userData.isFloor) {
-                selectedObject.material.emissive.setHex(0x000000); 
+                // [수정] 선택 해제 시 emissive 끄기
+                // selectedObject.material.color.setHex(0xE5CFAA); 
+                selectedObject.material.emissive.setHex(0x000000);
                 document.getElementById('room-edit-panel').style.display = 'none';
             }
             else if (selectedObject.userData.isFurniture) {
