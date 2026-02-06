@@ -2,8 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>방 배치도(남기복)</title>
+    <!-- 모바일 줌 방지 및 뷰포트 설정 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>방 가구 배치도(남기복)</title>
     <style>
         body {
             margin: 0;
@@ -11,11 +12,15 @@
             font-family: 'Noto Sans KR', sans-serif;
             background-color: #1a1a1a;
             color: white;
+            /* 모바일에서 당겨서 새로고침 방지 */
+            overscroll-behavior: none;
         }
         #canvas-container {
             width: 100vw;
             height: 100vh;
             display: block;
+            /* 캔버스 터치 조작 시 브라우저 스크롤 방지 */
+            touch-action: none; 
         }
         /* 라벨 컨테이너 */
         #labels-container {
@@ -40,13 +45,30 @@
             pointer-events: none;
             transition: opacity 0.2s;
             border: 1px solid rgba(255,255,255,0.2);
+            z-index: 10;
         }
         
+        /* UI 토글 버튼 (모바일용) */
+        #ui-toggle-btn {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 2000;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            border: 1px solid #555;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            display: none; /* 데스크탑에선 숨김 */
+        }
+
         #ui-layer {
             position: absolute;
             top: 20px;
             left: 20px;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.85);
             padding: 20px;
             border-radius: 12px;
             backdrop-filter: blur(5px);
@@ -55,7 +77,36 @@
             max-height: 90vh;
             overflow-y: auto;
             pointer-events: auto;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            z-index: 1000;
         }
+        
+        /* 모바일 반응형 스타일 */
+        @media (max-width: 768px) {
+            #ui-toggle-btn {
+                display: block;
+            }
+            #ui-layer {
+                top: 70px; /* 버튼 아래로 이동 */
+                left: 50%;
+                transform: translateX(-50%); /* 중앙 정렬 */
+                width: 85%; /* 화면 꽉 차게 */
+                max-height: 70vh;
+            }
+            #ui-layer.collapsed {
+                transform: translateX(-50%) translateY(-150%); /* 위로 숨기기 */
+                opacity: 0;
+                pointer-events: none;
+            }
+            .btn {
+                padding: 14px; /* 터치 영역 확대 */
+                font-size: 14px;
+            }
+            input[type="range"] {
+                height: 20px; /* 슬라이더 터치 영역 확대 */
+            }
+        }
+
         #ui-layer::-webkit-scrollbar { width: 6px; }
         #ui-layer::-webkit-scrollbar-thumb { background-color: #555; border-radius: 3px; }
         
@@ -65,6 +116,9 @@
             color: #eee;
             border-bottom: 1px solid #444;
             padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .control-group {
             margin-bottom: 20px;
@@ -105,9 +159,9 @@
         
         .input-row { display: flex; gap: 5px; margin-bottom: 5px; }
         input[type="number"], input[type="text"], select {
-            width: 100%; padding: 8px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box;
+            width: 100%; padding: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; font-size: 14px;
         }
-        input[type="range"] { width: 100%; margin: 5px 0; cursor: pointer; }
+        input[type="range"] { width: 100%; margin: 10px 0; cursor: pointer; }
         
         #selection-panel {
             display: none;
@@ -127,9 +181,15 @@
 <body>
 
     <div id="labels-container"></div>
+    
+    <!-- 모바일용 메뉴 토글 버튼 -->
+    <button id="ui-toggle-btn" onclick="toggleUI()">☰ 메뉴</button>
 
     <div id="ui-layer">
-        <h1>🛠️ 방 위치 설정(지선이를 위한)</h1>
+        <h1>🛠️ 방 꾸미기 설정 
+            <!-- 데스크탑용 닫기 버튼 (모바일은 외부 버튼 사용) -->
+            <span style="font-size:12px; cursor:pointer; display:none;" onclick="toggleUI()">✕</span>
+        </h1>
         
         <!-- 뷰 및 저장 -->
         <div class="control-group">
@@ -141,7 +201,6 @@
         <div class="control-group">
             <span class="control-label">방 크기 설정 (단위: cm)</span>
             <div class="input-row">
-                <!-- 기본값 400cm (4m) -->
                 <input type="number" id="roomW" value="400" min="200" max="1500" placeholder="가로 (cm)">
                 <input type="number" id="roomH" value="400" min="200" max="1500" placeholder="세로 (cm)">
                 <button class="btn btn-view" style="width: 60px; margin:0;" onclick="updateRoomSize()">적용</button>
@@ -187,9 +246,8 @@
 
         <div class="instruction">
             <strong>Tip:</strong><br>
-            • 방 크기는 <strong>cm 단위</strong>로 입력하세요.<br>
-            • 슬라이더를 움직여 가구 크기(cm)를 조절하세요.<br>
-            • 드래그 시 가구가 방 벽을 넘어가지 않습니다.
+            • 모바일: 메뉴 버튼으로 패널을 여닫으세요.<br>
+            • 터치 드래그로 가구를 이동할 수 있습니다.
         </div>
     </div>
 
@@ -208,11 +266,25 @@
         let is2D = false; 
 
         // 내부 단위 설정 (1 unit = 10cm)
-        // 400cm 입력을 받으면 내부적으로 40으로 처리
-        let currentRoomW = 40; // 초기값 (400cm 대응)
-        let currentRoomH = 40; // 초기값 (400cm 대응)
+        let currentRoomW = 40; 
+        let currentRoomH = 40; 
         const UNIT_TO_CM = 10; 
         const WALL_HEIGHT = 15;
+
+        // UI 토글 함수
+        function toggleUI() {
+            const ui = document.getElementById('ui-layer');
+            const btn = document.getElementById('ui-toggle-btn');
+            
+            ui.classList.toggle('collapsed');
+            
+            // 버튼 텍스트 변경 (선택사항)
+            if(ui.classList.contains('collapsed')) {
+                btn.innerHTML = '☰ 메뉴';
+            } else {
+                btn.innerHTML = '✕ 닫기';
+            }
+        }
 
         function init() {
             scene = new THREE.Scene();
@@ -226,6 +298,9 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            // 픽셀 비율 설정 (고해상도 디스플레이 대응)
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -241,25 +316,28 @@
             scene.add(wallGroup);
             createRoom(currentRoomW, currentRoomH);
 
-            // 초기 가구
             addFurniture('bed', '내 침대');
 
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
             window.addEventListener('resize', onWindowResize, false);
-            renderer.domElement.addEventListener('mousedown', onMouseDown, false);
-            renderer.domElement.addEventListener('mousemove', onMouseMove, false);
-            renderer.domElement.addEventListener('mouseup', onMouseUp, false);
-            renderer.domElement.addEventListener('touchstart', onTouchStart, {passive: false});
-            renderer.domElement.addEventListener('touchmove', onTouchMove, {passive: false});
-            renderer.domElement.addEventListener('touchend', onMouseUp, false);
+            
+            // 이벤트 리스너 설정
+            const canvas = renderer.domElement;
+            canvas.addEventListener('mousedown', onMouseDown, false);
+            canvas.addEventListener('mousemove', onMouseMove, false);
+            canvas.addEventListener('mouseup', onMouseUp, false);
+            
+            // 모바일 터치 이벤트 (Passive: false로 설정하여 preventDefault 허용)
+            canvas.addEventListener('touchstart', onTouchStart, {passive: false});
+            canvas.addEventListener('touchmove', onTouchMove, {passive: false});
+            canvas.addEventListener('touchend', onMouseUp, false);
 
             animate();
         }
 
         function createRoom(width, height) {
-            // width, height는 내부 단위 (unit)
             if(plane) scene.remove(plane);
             if(gridHelper) scene.remove(gridHelper);
             while(wallGroup.children.length > 0){ wallGroup.remove(wallGroup.children[0]); }
@@ -272,7 +350,6 @@
             plane.name = "floor";
             scene.add(plane);
 
-            // 그리드 간격 조정
             gridHelper = new THREE.GridHelper(Math.max(width, height), Math.max(width, height)/5, 0xcccccc, 0xe5e5e5);
             gridHelper.position.y = 0.01;
             scene.add(gridHelper);
@@ -292,19 +369,16 @@
         }
 
         function updateRoomSize() {
-            // 입력값은 cm 단위
             const w_cm = parseInt(document.getElementById('roomW').value);
             const h_cm = parseInt(document.getElementById('roomH').value);
             
             if(w_cm && h_cm) {
-                // 내부 단위로 변환 ( / 10 )
                 currentRoomW = w_cm / UNIT_TO_CM;
                 currentRoomH = h_cm / UNIT_TO_CM;
                 createRoom(currentRoomW, currentRoomH);
             }
         }
 
-        // --- 사용자 입력 가구 추가 ---
         function handleAddCustom() {
             const nameInput = document.getElementById('newFurnitureName');
             const typeSelect = document.getElementById('newFurnitureType');
@@ -319,16 +393,18 @@
 
             addFurniture(type, name);
             nameInput.value = '';
+            
+            // 모바일에서는 추가 후 패널이 가리지 않도록 닫아주는 것도 고려해볼 만함
+            // toggleUI(); 
         }
 
         function addFurniture(type, customName) {
             let geometry, material, mesh;
             let startY = 0;
-            let baseSize = { w: 0, h: 0, d: 0 }; // unit 단위
+            let baseSize = { w: 0, h: 0, d: 0 }; 
 
-            // 기본 사이즈 정의 (예: 14 unit = 140 cm)
             if (type === 'bed') {
-                baseSize = { w: 14, h: 4, d: 20 }; // 140x200 cm
+                baseSize = { w: 14, h: 4, d: 20 }; 
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
                 mesh = new THREE.Mesh(geometry, material);
@@ -343,7 +419,7 @@
                 mesh.add(pillow);
 
             } else if (type === 'desk') {
-                baseSize = { w: 12, h: 7, d: 6 }; // 120x60 cm
+                baseSize = { w: 12, h: 7, d: 6 }; 
                 geometry = new THREE.BoxGeometry(baseSize.w, 0.5, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xA0522D });
                 mesh = new THREE.Mesh(geometry, material);
@@ -362,14 +438,14 @@
                 });
 
             } else if (type === 'wardrobe') {
-                baseSize = { w: 8, h: 18, d: 6 }; // 80x60 cm
+                baseSize = { w: 8, h: 18, d: 6 }; 
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0x555555 });
                 mesh = new THREE.Mesh(geometry, material);
                 startY = baseSize.h / 2;
 
             } else if (type === 'lamp') {
-                baseSize = { w: 3, h: 10, d: 3 }; // 30x30 cm
+                baseSize = { w: 3, h: 10, d: 3 }; 
                 geometry = new THREE.CylinderGeometry(0.3, 0.5, 8, 16);
                 material = new THREE.MeshStandardMaterial({ color: 0x222222 });
                 mesh = new THREE.Mesh(geometry, material);
@@ -392,7 +468,7 @@
                 mesh.add(base);
 
             } else if (type === 'box') {
-                baseSize = { w: 5, h: 5, d: 5 }; // 50x50 cm
+                baseSize = { w: 5, h: 5, d: 5 }; 
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
                 mesh = new THREE.Mesh(geometry, material);
@@ -440,7 +516,6 @@
                 <div style="font-size:10px; color:#ddd;">${widthCm} x ${depthCm} cm</div>
             `;
             
-            // 현재 선택된 객체라면 UI의 사이즈 표시도 업데이트
             if (mesh === selectedObject) {
                 document.getElementById('displayW').textContent = `${widthCm} cm`;
                 document.getElementById('displayD').textContent = `${depthCm} cm`;
@@ -548,7 +623,6 @@
             if(degrees < 0) degrees += 360; 
             document.getElementById('rotation').value = degrees % 360;
 
-            // 선택 즉시 치수 표시 업데이트
             updateLabelText(obj);
         }
 
@@ -582,8 +656,17 @@
             return raycaster.intersectObjects(furnitureObjects, false);
         }
 
-        function onTouchStart(event) { event.preventDefault(); onMouseDown(event); }
-        function onTouchMove(event) { event.preventDefault(); onMouseMove(event); }
+        // 터치 시작 시 스크롤 방지
+        function onTouchStart(event) { 
+            event.preventDefault(); 
+            onMouseDown(event); 
+        }
+        
+        // 터치 이동 시 스크롤 방지 및 좌표 업데이트
+        function onTouchMove(event) { 
+            event.preventDefault(); 
+            onMouseMove(event); 
+        }
 
         function updateMouseCoords(event, element) {
             const rect = element.getBoundingClientRect();
@@ -623,7 +706,8 @@
         }
 
         function onMouseMove(event) {
-            event.preventDefault();
+            // 마우스 이동은 preventDefault를 호출하지 않아도 되지만, 
+            // 터치 이벤트를 통해 호출될 때는 상위 핸들러에서 처리됨
             updateMouseCoords(event, renderer.domElement);
 
             if(isDragging) {
@@ -667,6 +751,7 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         }
 
         function animate() {
