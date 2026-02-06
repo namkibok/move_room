@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 집 꾸미기 (도면+라벨 저장)</title>
+    <title>3D 집 꾸미기 (가구 추가 후 회전 수정)</title>
     <style>
         body {
             margin: 0;
@@ -152,10 +152,8 @@
             font-size: 12px; color: #4fc3f7; margin-bottom: 10px; font-weight: bold;
         }
     </style>
-    <!-- Three.js & Controls -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <!-- html2canvas: 화면 전체(라벨 포함) 캡처용 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body class="mode-layout">
@@ -210,24 +208,29 @@
             <input type="text" id="newFurnitureName" placeholder="이름 (예: 내 책상)" style="margin-bottom: 8px;">
             <div class="input-row">
                 <select id="newFurnitureType">
-                    <option value="bed">침대</option>
-                    <option value="desk">책상</option>
-                    <option value="vanity">화장대</option>
-                    <option value="table">식탁</option>
-                    <option value="kitchen">주방 (싱크대)</option>
-                    <option value="fridge">냉장고</option>
-                    <option value="washer">세탁기</option>
-                    <option value="ac_stand">에어컨 (스탠드)</option>
-                    <option value="tv_wall">TV (벽걸이)</option>
-                    <option value="wardrobe">옷장</option>
-                    <option value="lamp">조명 (스탠드)</option>
-                    <option value="door">문 (Door)</option>
-                    <option value="window">창문</option>
-                    <option value="box">기본 박스</option>
+                    <optgroup label="가구">
+                        <option value="bed">침대</option>
+                        <option value="desk">책상</option>
+                        <option value="wardrobe">옷장</option>
+                        <option value="vanity">화장대</option>
+                        <option value="table">식탁</option>
+                        <option value="box">기본 박스</option>
+                    </optgroup>
+                    <optgroup label="가전제품">
+                        <option value="kitchen">주방 (싱크대)</option>
+                        <option value="fridge">냉장고</option>
+                        <option value="washer">세탁기</option>
+                        <option value="ac_stand">에어컨 (스탠드)</option>
+                        <option value="tv_wall">TV (벽걸이)</option>
+                    </optgroup>
+                    <optgroup label="인테리어/기타">
+                        <option value="lamp">조명 (스탠드)</option>
+                        <option value="door">문 (Door)</option>
+                        <option value="window">창문</option>
+                    </optgroup>
                 </select>
                 <button class="btn btn-add" style="width: 60px; margin:0;" onclick="handleAddCustom()">추가</button>
             </div>
-            <button class="btn btn-danger" style="margin-top: 10px;" onclick="clearAllFurniture()">모든 가구 삭제</button>
         </div>
 
         <!-- 가구 선택 패널 -->
@@ -332,7 +335,6 @@
             mainLight.shadow.mapSize.height = 2048;
             scene.add(mainLight);
 
-            // Drag Plane
             dragPlane = new THREE.Mesh(
                 new THREE.PlaneGeometry(10000, 10000),
                 new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide })
@@ -395,7 +397,20 @@
             animate();
         }
 
-        // ... [방 관리 함수 동일] ...
+        // --- 터치 이벤트 핸들러 ---
+        function onTouchStart(e) {
+            if(e.target.closest('#ui-layer') || e.target.closest('#ui-toggle-btn')) return;
+            e.preventDefault(); 
+            onMouseDown(e); 
+        }
+
+        function onTouchMove(e) {
+            if(e.target.closest('#ui-layer')) return;
+            e.preventDefault();
+            onMouseMove(e);
+        }
+
+        // --- 방(Room) 관리 ---
         function handleAddRoom() {
             const nameInput = document.getElementById('newRoomName');
             let name = nameInput.value.trim();
@@ -508,7 +523,6 @@
             deselectObject();
         }
 
-        // --- 가구 관리 ---
         function handleAddCustom() {
             const nameInput = document.getElementById('newFurnitureName');
             const typeSelect = document.getElementById('newFurnitureType');
@@ -778,22 +792,6 @@
             if(selectedObject && selectedObject.userData.isFurniture) deselectObject();
         }
 
-        function onTouchStart(e) { 
-            if (e.target.closest('#ui-layer') || e.target.closest('#ui-toggle-btn')) {
-                return;
-            }
-            e.preventDefault(); 
-            onMouseDown(e); 
-        }
-        
-        function onTouchMove(e) { 
-            if (e.target.closest('#ui-layer')) {
-                return;
-            }
-            e.preventDefault(); 
-            onMouseMove(e); 
-        }
-
         function onMouseDown(event) {
             if (event.target.closest('#ui-layer') || event.target.closest('#ui-toggle-btn')) return;
             if (event.type !== 'touchstart' && event.button !== 0) return;
@@ -921,6 +919,8 @@
             
             if (obj.userData.isFloor) {
                 activeRoom = obj.parent; 
+                // [수정] emissive로 강조
+                // obj.material.color.setHex(0xaaddff); 
                 obj.material.emissive.setHex(0x444444); 
                 updateActiveRoomDisplay();
                 
@@ -956,10 +956,13 @@
         function deselectObject() {
             if(!selectedObject) return;
 
+            // [수정] 회전 복구 (2D 체크)
             if(!is2D) controls.enableRotate = true;
 
             if (selectedObject.userData.isFloor) {
-                selectedObject.material.emissive.setHex(0x000000); 
+                // [수정] 선택 해제 시 emissive 끄기
+                // selectedObject.material.color.setHex(0xE5CFAA); 
+                selectedObject.material.emissive.setHex(0x000000);
                 document.getElementById('room-edit-panel').style.display = 'none';
             }
             else if (selectedObject.userData.isFurniture) {
@@ -1046,29 +1049,10 @@
 
         function saveSceneAsImage() {
             renderer.render(scene, camera);
-            updateLabelsPos(); 
-            const uiLayer = document.getElementById('ui-layer');
-            const toggleBtn = document.getElementById('ui-toggle-btn');
-            
-            uiLayer.style.display = 'none';
-            toggleBtn.style.display = 'none';
-
-            html2canvas(document.body, {
-                backgroundColor: '#1a1a1a', 
-                useCORS: true, 
-            }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = `home_design_${new Date().getTime()}.png`;
-                link.href = canvas.toDataURL("image/png");
-                link.click();
-                uiLayer.style.display = '';
-                toggleBtn.style.display = '';
-            }).catch(err => {
-                console.error("캡처 실패:", err);
-                alert("도면 저장 중 오류가 발생했습니다.");
-                uiLayer.style.display = '';
-                toggleBtn.style.display = '';
-            });
+            const link = document.createElement('a');
+            link.download = `home_design.png`;
+            link.href = renderer.domElement.toDataURL("image/png");
+            link.click();
         }
 
         function onWindowResize() {
