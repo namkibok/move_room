@@ -1214,28 +1214,44 @@
                     shelf.userData.canTint = true;
                     mesh.add(shelf);
                 }
-            } else if (type === 'projector_screen') {
+             } else if (type === 'projector_screen') {
+                // 빔 스크린 (스탠드형)
                 baseSize = { w:16, h:18, d:2 };
+                // 전체 컨테이너
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(16,18,2), new THREE.MeshBasicMaterial({visible:false}));
                 startY = 9;
+
+                // 스탠드 다리
                 const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 18), new THREE.MeshStandardMaterial({color:0x333333}));
                 pole.position.y = 0;
+                pole.position.z = -0.5; // [수정] 기둥을 화면 뒤로 이동
                 mesh.add(pole);
+
+                // 스크린 케이스 (상단 롤)
                 const caseBox = new THREE.Mesh(new THREE.BoxGeometry(16, 0.8, 0.8), new THREE.MeshStandardMaterial({color:0xcccccc}));
                 caseBox.position.y = 8;
                 mesh.add(caseBox);
+
+                // 스크린 천 (화면)
                 const screenGeo = new THREE.BoxGeometry(15, 10, 0.1);
+                // 우주 텍스처 생성
                 const spaceTexture = createSpaceTexture();
                 const screenMat = new THREE.MeshBasicMaterial({ map: spaceTexture });
                 const screen = new THREE.Mesh(screenGeo, screenMat);
                 screen.position.y = 2.5; 
                 screen.position.z = 0.2;
+                // 이름 부여 (이미지 변경 식별용)
                 screen.name = 'screen_surface'; 
                 mesh.add(screen);
+
+                // 받침대 (삼각대 느낌의 원판)
                 const base = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.5, 3), new THREE.MeshStandardMaterial({color:0x333333}));
                 base.position.y = -8.75;
+                base.position.z = -0.5; // [수정] 받침대도 기둥 위치로 이동
                 mesh.add(base);
+
             } else { 
+                
                 baseSize = { w:5, h:5, d:5 };
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(5,5,5), new THREE.MeshStandardMaterial({color:0xccc}));
                 mesh.userData.canTint = true;
