@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 집 꾸미기 (화면 저장 수정)</title>
+    <title>3D 집 꾸미기 (기능 복구 및 이동 수정)</title>
     <style>
         body {
             margin: 0;
@@ -258,6 +258,7 @@
                         <option value="washer">세탁기</option>
                         <option value="ac_stand">에어컨 (스탠드)</option>
                         <option value="tv_wall">TV (벽걸이)</option>
+                        <option value="projector_screen">빔 스크린 (우주)</option>
                     </optgroup>
                     <optgroup label="인테리어/기타">
                         <option value="plant">화분</option>
@@ -324,6 +325,29 @@
         const ROOM_GAP = 5; 
 
         let dragPlane;
+
+        // 우주 텍스처
+        function createSpaceTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            const grd = ctx.createLinearGradient(0,0,0,256);
+            grd.addColorStop(0, '#000022'); grd.addColorStop(1, '#000000');
+            ctx.fillStyle = grd; ctx.fillRect(0,0,512,256);
+            ctx.fillStyle = 'white';
+            for(let i=0; i<150; i++) {
+                const x = Math.random()*512; const y = Math.random()*256; const r = Math.random()*1.5;
+                ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+            }
+            ctx.beginPath(); ctx.arc(380, 100, 40, 0, Math.PI*2);
+            const pGrd = ctx.createRadialGradient(360, 80, 5, 380, 100, 40);
+            pGrd.addColorStop(0, '#ffdd88'); pGrd.addColorStop(1, '#cc8800');
+            ctx.fillStyle = pGrd; ctx.fill();
+            ctx.beginPath(); ctx.ellipse(380, 100, 70, 15, Math.PI/6, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(200, 200, 220, 0.6)'; ctx.lineWidth = 6; ctx.stroke();
+            const tex = new THREE.CanvasTexture(canvas);
+            return tex;
+        }
 
         function toggleUI() {
             const ui = document.getElementById('ui-layer');
@@ -453,7 +477,6 @@
             onMouseMove(e);
         }
 
-        // --- 데이터 저장/불러오기 ---
         function saveData() {
             try {
                 const roomsData = rooms.map(r => {
@@ -662,6 +685,7 @@
             roomGroup.userData = { isRoom: true, id: roomId, w: w, h: h, name: roomName };
 
             const floorGeo = new THREE.BoxGeometry(w, 1, h);
+            // 바닥 색상: 약한 우드색 (기본값)
             const floorMat = new THREE.MeshStandardMaterial({ color: 0xE5CFAA });
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.position.y = -0.5;
@@ -1026,13 +1050,12 @@
                 const frame = new THREE.Group();
                 const top = new THREE.Mesh(new THREE.BoxGeometry(13,0.5,1), fM); top.position.y=6; frame.add(top);
                 const bot = new THREE.Mesh(new THREE.BoxGeometry(13,0.5,1), fM); bot.position.y=-6; frame.add(bot);
-                top.userData.canTint = true;
-                bot.userData.canTint = true;
-                mesh.add(frame);
                 const l = new THREE.Mesh(new THREE.BoxGeometry(0.5,12,1), fM); l.position.x=-6; frame.add(l);
                 const r = new THREE.Mesh(new THREE.BoxGeometry(0.5,12,1), fM); r.position.x=6; frame.add(r);
                 const glass = new THREE.Mesh(new THREE.BoxGeometry(11.5,11.5,0.2), glassM); frame.add(glass);
-                l.userData.canTint = true; r.userData.canTint = true;
+                const cross = new THREE.Mesh(new THREE.BoxGeometry(12,0.3,0.4), fM); frame.add(cross);
+                const v = new THREE.Mesh(new THREE.BoxGeometry(0.3,12,0.4), fM); frame.add(v);
+                mesh.add(frame);
             } else if (type === 'aquarium') {
                 baseSize = { w:8, h:6, d:4 };
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(8,6,4), new THREE.MeshBasicMaterial({visible:false}));
@@ -1166,6 +1189,26 @@
                     shelf.userData.canTint = true;
                     mesh.add(shelf);
                 }
+            } else if (type === 'projector_screen') {
+                baseSize = { w:16, h:18, d:2 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(16,18,2), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 9;
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 18), new THREE.MeshStandardMaterial({color:0x333333}));
+                pole.position.y = 0;
+                mesh.add(pole);
+                const caseBox = new THREE.Mesh(new THREE.BoxGeometry(16, 0.8, 0.8), new THREE.MeshStandardMaterial({color:0xcccccc}));
+                caseBox.position.y = 8;
+                mesh.add(caseBox);
+                const screenGeo = new THREE.BoxGeometry(15, 10, 0.1);
+                const spaceTexture = createSpaceTexture();
+                const screenMat = new THREE.MeshBasicMaterial({ map: spaceTexture });
+                const screen = new THREE.Mesh(screenGeo, screenMat);
+                screen.position.y = 2.5; 
+                screen.position.z = 0.2;
+                mesh.add(screen);
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.5, 3), new THREE.MeshStandardMaterial({color:0x333333}));
+                base.position.y = -8.75;
+                mesh.add(base);
             } else { 
                 baseSize = { w:5, h:5, d:5 };
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(5,5,5), new THREE.MeshStandardMaterial({color:0xccc}));
@@ -1225,8 +1268,10 @@
             raycaster.setFromCamera(mouse, camera);
             const planeIntersects = raycaster.intersectObject(dragPlane);
             if (planeIntersects.length > 0) {
-                let targetPos = targetObj.userData.isFurniture ? targetObj.position : targetObj.parent.position;
-                offset.copy(planeIntersects[0].point).sub(targetPos);
+                // 월드 좌표 기준 오프셋 계산
+                const worldPos = new THREE.Vector3();
+                targetObj.getWorldPosition(worldPos);
+                offset.copy(planeIntersects[0].point).sub(worldPos);
             }
         }
 
@@ -1324,6 +1369,7 @@
 
                         const planeIntersects = raycaster.intersectObject(dragPlane);
                         if (planeIntersects.length > 0 && isDragging) {
+                            // 드래그 시작 시 월드 좌표 기준으로 오프셋 계산
                             const worldPos = new THREE.Vector3();
                             selected.getWorldPosition(worldPos);
                             offset.copy(planeIntersects[0].point).sub(worldPos);
@@ -1353,6 +1399,7 @@
                         selectedObject.parent.position.set(targetWorldPos.x, 0, targetWorldPos.z);
                     } else if (selectedObject.userData.isFurniture) {
                         if (selectedObject.parent && selectedObject.parent.userData.isRoom) {
+                            // 월드 좌표 -> 로컬 좌표 변환
                             selectedObject.parent.worldToLocal(targetWorldPos);
                         }
                         
@@ -1374,7 +1421,7 @@
                             targetWorldPos.x = Math.max(-limitX, Math.min(limitX, targetWorldPos.x));
                             targetWorldPos.z = Math.max(-limitZ, Math.min(limitZ, targetWorldPos.z));
                         }
-
+                        // 로컬 좌표 적용
                         selectedObject.position.set(targetWorldPos.x, selectedObject.position.y, targetWorldPos.z);
                     }
                 }
@@ -1397,14 +1444,13 @@
             if(selectedObject && selectedObject !== obj) deselectObject();
             selectedObject = obj;
 
-            if (obj.material && obj.material.emissive) {
-                obj.userData.currentEmissive = obj.material.emissive.getHex();
-                obj.material.emissive.setHex(0x555555);
-            }
-            
             if (obj.userData.isFloor) {
+                if (obj.material && obj.material.emissive) {
+                    obj.userData.currentEmissive = obj.material.emissive.getHex();
+                    obj.material.emissive.setHex(0x444444); 
+                }
+                
                 activeRoom = obj.parent; 
-                obj.material.emissive.setHex(0x444444); 
                 updateActiveRoomDisplay();
                 
                 if (appMode === 'layout') {
@@ -1417,10 +1463,25 @@
                     const wall = obj.parent.children.find(c => c.userData.isWall);
                     if(wall) document.getElementById('editRoomWallColor').value = '#' + wall.material.color.getHexString();
                 }
+                
+                if (obj.parent.userData.labelEl) {
+                    obj.parent.userData.labelEl.style.backgroundColor = 'rgba(255, 69, 58, 0.9)';
+                    obj.parent.userData.labelEl.style.border = '2px solid white';
+                    obj.parent.userData.labelEl.style.transform = 'translate(-50%, -120%) scale(1.1)';
+                    obj.parent.userData.labelEl.style.zIndex = '100';
+                }
+
                 document.getElementById('selection-panel').style.display = 'none';
             }
             else if (obj.userData.isFurniture) {
                 controls.enableRotate = false; 
+
+                if (obj.userData.labelEl) {
+                    obj.userData.labelEl.style.backgroundColor = 'rgba(255, 69, 58, 0.9)'; 
+                    obj.userData.labelEl.style.border = '2px solid white';
+                    obj.userData.labelEl.style.transform = 'translate(-50%, -120%) scale(1.1)'; 
+                    obj.userData.labelEl.style.zIndex = '100'; 
+                }
 
                 const p = document.getElementById('selection-panel');
                 p.style.display = 'block';
@@ -1461,13 +1522,26 @@
             if(!is2D) controls.enableRotate = true;
 
             if (selectedObject.userData.isFloor) {
-                selectedObject.material.emissive.setHex(0x000000);
+                if (selectedObject.material && selectedObject.material.emissive) {
+                    selectedObject.material.emissive.setHex(0x000000);
+                }
+                if (selectedObject.parent.userData.labelEl) {
+                     selectedObject.parent.userData.labelEl.style.backgroundColor = '';
+                     selectedObject.parent.userData.labelEl.style.border = '';
+                     selectedObject.parent.userData.labelEl.style.transform = '';
+                     selectedObject.parent.userData.labelEl.style.zIndex = '';
+                }
+
                 document.getElementById('room-edit-panel').style.display = 'none';
             }
             else if (selectedObject.userData.isFurniture) {
-                 if(selectedObject.material && selectedObject.material.emissive) {
-                     selectedObject.material.emissive.setHex(selectedObject.userData.currentEmissive || 0);
+                 if (selectedObject.userData.labelEl) {
+                     selectedObject.userData.labelEl.style.backgroundColor = ''; 
+                     selectedObject.userData.labelEl.style.border = '';
+                     selectedObject.userData.labelEl.style.transform = '';
+                     selectedObject.userData.labelEl.style.zIndex = '';
                  }
+                 
                  document.getElementById('selection-panel').style.display = 'none';
             }
             selectedObject = null;
@@ -1547,22 +1621,16 @@
         }
 
         function saveSceneAsImage() {
-            // 렌더링 업데이트
             renderer.render(scene, camera);
             updateLabelsPos(); 
-            
-            // UI 숨기기
             const uiLayer = document.getElementById('ui-layer');
             const toggleBtn = document.getElementById('ui-toggle-btn');
-            
-            // 원래 display 속성 저장
             const originalUiDisplay = uiLayer.style.display;
             const originalBtnDisplay = toggleBtn.style.display;
 
             uiLayer.style.display = 'none';
             toggleBtn.style.display = 'none';
 
-            // html2canvas로 전체 화면 캡처
             html2canvas(document.body, {
                 backgroundColor: '#1a1a1a', 
                 useCORS: true, 
@@ -1572,13 +1640,11 @@
                 link.href = canvas.toDataURL("image/png");
                 link.click();
                 
-                // UI 복구
                 uiLayer.style.display = originalUiDisplay;
                 toggleBtn.style.display = originalBtnDisplay;
             }).catch(err => {
                 console.error("캡처 실패:", err);
                 alert("도면 저장 중 오류가 발생했습니다.");
-                // 에러 발생 시에도 UI 복구
                 uiLayer.style.display = originalUiDisplay;
                 toggleBtn.style.display = originalBtnDisplay;
             });
