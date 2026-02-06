@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 집 꾸미기 (기능 복구 및 이동 수정)</title>
+    <title>3D 집 꾸미기 (색상 유지 수정)</title>
     <style>
         body {
             margin: 0;
@@ -163,6 +163,7 @@
         }
         
         #file-input { display: none; }
+        .hidden-file-input { display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -173,7 +174,8 @@
     <div id="labels-container"></div>
     <button id="ui-toggle-btn" onclick="toggleUI()">☰ 메뉴</button>
 
-    <input type="file" id="file-input" accept=".json" onchange="loadData(this)">
+    <input type="file" id="file-input" class="hidden-file-input" accept=".json" onchange="loadData(this)">
+    <input type="file" id="screen-img-input" class="hidden-file-input" accept="image/*" onchange="changeScreenImage(this)">
 
     <div id="ui-layer">
         <h1>🏡 집 꾸미기
@@ -253,12 +255,12 @@
                         <option value="box">기본 박스</option>
                     </optgroup>
                     <optgroup label="가전제품">
+                        <option value="projector_screen">빔 스크린</option>
                         <option value="kitchen">주방 (싱크대)</option>
                         <option value="fridge">냉장고</option>
                         <option value="washer">세탁기</option>
                         <option value="ac_stand">에어컨 (스탠드)</option>
                         <option value="tv_wall">TV (벽걸이)</option>
-                        <option value="projector_screen">빔 스크린 (우주)</option>
                     </optgroup>
                     <optgroup label="인테리어/기타">
                         <option value="plant">화분</option>
@@ -277,6 +279,8 @@
         <div id="selection-panel" class="control-group" style="display:none;">
             <span class="control-label" style="color: #4fc3f7;">선택됨: <span id="selected-name">-</span></span>
             
+            <button id="btn-change-screen" class="btn btn-data" style="display:none; margin-bottom:5px;" onclick="document.getElementById('screen-img-input').click()">🖼️ 스크린 이미지 변경</button>
+
             <span class="control-label" style="margin-top:5px;">가구 색상</span>
             <input type="color" id="editFurnitureColor" onchange="updateFurnitureColor()" oninput="updateFurnitureColor()">
 
@@ -326,25 +330,45 @@
 
         let dragPlane;
 
-        // 우주 텍스처
+        // 우주 텍스처 생성 함수
         function createSpaceTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 512; canvas.height = 256;
             const ctx = canvas.getContext('2d');
+            
             const grd = ctx.createLinearGradient(0,0,0,256);
-            grd.addColorStop(0, '#000022'); grd.addColorStop(1, '#000000');
-            ctx.fillStyle = grd; ctx.fillRect(0,0,512,256);
+            grd.addColorStop(0, '#000022');
+            grd.addColorStop(1, '#000000');
+            ctx.fillStyle = grd;
+            ctx.fillRect(0,0,512,256);
+
             ctx.fillStyle = 'white';
             for(let i=0; i<150; i++) {
-                const x = Math.random()*512; const y = Math.random()*256; const r = Math.random()*1.5;
+                const x = Math.random()*512;
+                const y = Math.random()*256;
+                const r = Math.random()*1.5;
                 ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
             }
-            ctx.beginPath(); ctx.arc(380, 100, 40, 0, Math.PI*2);
+
+            ctx.beginPath();
+            ctx.arc(380, 100, 40, 0, Math.PI*2);
             const pGrd = ctx.createRadialGradient(360, 80, 5, 380, 100, 40);
-            pGrd.addColorStop(0, '#ffdd88'); pGrd.addColorStop(1, '#cc8800');
-            ctx.fillStyle = pGrd; ctx.fill();
-            ctx.beginPath(); ctx.ellipse(380, 100, 70, 15, Math.PI/6, 0, Math.PI*2);
-            ctx.strokeStyle = 'rgba(200, 200, 220, 0.6)'; ctx.lineWidth = 6; ctx.stroke();
+            pGrd.addColorStop(0, '#ffdd88');
+            pGrd.addColorStop(1, '#cc8800');
+            ctx.fillStyle = pGrd;
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.ellipse(380, 100, 70, 15, Math.PI/6, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(200, 200, 220, 0.6)';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(100, 180, 25, 0, Math.PI*2);
+            ctx.fillStyle = '#4488ff';
+            ctx.fill();
+
             const tex = new THREE.CanvasTexture(canvas);
             return tex;
         }
@@ -477,6 +501,7 @@
             onMouseMove(e);
         }
 
+        // --- 데이터 저장/불러오기 ---
         function saveData() {
             try {
                 const roomsData = rooms.map(r => {
@@ -1205,6 +1230,7 @@
                 const screen = new THREE.Mesh(screenGeo, screenMat);
                 screen.position.y = 2.5; 
                 screen.position.z = 0.2;
+                screen.name = 'screen_surface'; 
                 mesh.add(screen);
                 const base = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.5, 3), new THREE.MeshStandardMaterial({color:0x333333}));
                 base.position.y = -8.75;
@@ -1268,7 +1294,7 @@
             raycaster.setFromCamera(mouse, camera);
             const planeIntersects = raycaster.intersectObject(dragPlane);
             if (planeIntersects.length > 0) {
-                // 월드 좌표 기준 오프셋 계산
+                // [수정] 월드 좌표 기준 오프셋
                 const worldPos = new THREE.Vector3();
                 targetObj.getWorldPosition(worldPos);
                 offset.copy(planeIntersects[0].point).sub(worldPos);
@@ -1369,7 +1395,7 @@
 
                         const planeIntersects = raycaster.intersectObject(dragPlane);
                         if (planeIntersects.length > 0 && isDragging) {
-                            // 드래그 시작 시 월드 좌표 기준으로 오프셋 계산
+                            // [수정] 드래그 시작 시 월드 좌표 사용
                             const worldPos = new THREE.Vector3();
                             selected.getWorldPosition(worldPos);
                             offset.copy(planeIntersects[0].point).sub(worldPos);
@@ -1393,13 +1419,15 @@
                 const planeIntersects = raycaster.intersectObject(dragPlane);
                 if (planeIntersects.length > 0) {
                     const point = planeIntersects[0].point;
-                    const targetWorldPos = point.sub(offset);
+                    const targetWorldPos = point.clone().sub(offset);
 
                     if (selectedObject.userData.isFloor) {
                         selectedObject.parent.position.set(targetWorldPos.x, 0, targetWorldPos.z);
                     } else if (selectedObject.userData.isFurniture) {
+                        // [수정] 로컬 좌표 변환 시 원본 벡터 보존을 위해 clone 사용 안함 (worldToLocal은 호출 객체 변경)
+                        // 하지만 targetWorldPos는 매번 새로 계산되므로 안전
+                        
                         if (selectedObject.parent && selectedObject.parent.userData.isRoom) {
-                            // 월드 좌표 -> 로컬 좌표 변환
                             selectedObject.parent.worldToLocal(targetWorldPos);
                         }
                         
@@ -1420,9 +1448,10 @@
                             
                             targetWorldPos.x = Math.max(-limitX, Math.min(limitX, targetWorldPos.x));
                             targetWorldPos.z = Math.max(-limitZ, Math.min(limitZ, targetWorldPos.z));
+                            targetWorldPos.y = selectedObject.position.y;
                         }
-                        // 로컬 좌표 적용
-                        selectedObject.position.set(targetWorldPos.x, selectedObject.position.y, targetWorldPos.z);
+
+                        selectedObject.position.copy(targetWorldPos);
                     }
                 }
             }
@@ -1507,6 +1536,13 @@
                     document.getElementById('editFurnitureColor').value = '#' + targetColor.getHexString();
                 } else {
                      document.getElementById('editFurnitureColor').value = '#ffffff';
+                }
+                
+                const btnChangeScreen = document.getElementById('btn-change-screen');
+                if (obj.userData.type === 'projector_screen') {
+                    btnChangeScreen.style.display = 'block';
+                } else {
+                    btnChangeScreen.style.display = 'none';
                 }
 
                 updateLabel(obj);
@@ -1625,6 +1661,7 @@
             updateLabelsPos(); 
             const uiLayer = document.getElementById('ui-layer');
             const toggleBtn = document.getElementById('ui-toggle-btn');
+            
             const originalUiDisplay = uiLayer.style.display;
             const originalBtnDisplay = toggleBtn.style.display;
 
@@ -1661,6 +1698,32 @@
             controls.update();
             renderer.render(scene, camera);
             updateLabelsPos();
+        }
+
+        // 스크린 이미지 변경 함수
+        function changeScreenImage(input) {
+            if (input.files && input.files[0]) {
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    var img = new Image();
+                    img.src = e.target.result;
+                    img.onload = function () {
+                        var texture = new THREE.Texture(this);
+                        texture.needsUpdate = true;
+                        
+                        if(selectedObject && selectedObject.userData.type === 'projector_screen') {
+                            selectedObject.traverse(function(child){
+                                if(child.name === 'screen_surface') {
+                                    child.material.map = texture;
+                                    child.material.needsUpdate = true;
+                                }
+                            });
+                        }
+                    };
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+            input.value = ''; // 초기화
         }
 
         init();
