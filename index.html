@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 집 꾸미기 (가구 추가 후 회전 수정)</title>
+    <title>3D 집 꾸미기 (화면 저장 수정)</title>
     <style>
         body {
             margin: 0;
@@ -86,7 +86,6 @@
             transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
             z-index: 1000;
             
-            /* 모바일 스크롤 허용 설정 */
             touch-action: pan-y; 
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
@@ -136,6 +135,7 @@
         .btn-add { background-color: #3b82f6; }
         .btn-save { background-color: #10b981; }
         .btn-danger { background-color: #d32f2f; }
+        .btn-data { background-color: #7c4dff; }
         
         .input-row { display: flex; gap: 5px; margin-bottom: 5px; }
         input[type="number"], input[type="text"], select {
@@ -143,6 +143,16 @@
         }
         input[type="range"] { width: 100%; margin: 10px 0; cursor: pointer; }
         
+        /* 컬러 피커 스타일 */
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            padding: 2px;
+            background: #333;
+            border: 1px solid #555;
+            cursor: pointer;
+        }
+
         #selection-panel {
             display: none; background: rgba(60, 60, 60, 0.4); border: 1px solid #555; border-radius: 8px; padding: 10px; margin-top: 10px;
         }
@@ -151,6 +161,8 @@
         #active-room-indicator {
             font-size: 12px; color: #4fc3f7; margin-bottom: 10px; font-weight: bold;
         }
+        
+        #file-input { display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -160,6 +172,8 @@
 
     <div id="labels-container"></div>
     <button id="ui-toggle-btn" onclick="toggleUI()">☰ 메뉴</button>
+
+    <input type="file" id="file-input" accept=".json" onchange="loadData(this)">
 
     <div id="ui-layer">
         <h1>🏡 집 꾸미기
@@ -173,7 +187,11 @@
         
         <div style="margin-bottom: 15px;">
             <button class="btn btn-view" id="toggleViewBtn" onclick="toggleView()">뷰 전환 (3D ↔ 2D)</button>
-            <button class="btn btn-save" onclick="saveSceneAsImage()">📷 도면 저장</button>
+            <button class="btn btn-save" onclick="saveSceneAsImage()">📷 화면 저장</button>
+            <div style="display:flex; gap:5px;">
+                <button class="btn btn-data" onclick="saveData()">💾 저장 (JSON)</button>
+                <button class="btn btn-data" onclick="document.getElementById('file-input').click()">📂 불러오기</button>
+            </div>
         </div>
 
         <!-- 구조 편집 UI -->
@@ -191,7 +209,20 @@
                 <span class="control-label" style="color:#4fc3f7">선택된 방 설정</span>
                 <span class="control-label">방 이름</span>
                 <input type="text" id="editRoomName" placeholder="방 이름 변경" onchange="updateSelectedRoomName()" style="margin-bottom: 8px;">
-                <span class="control-label">크기 조절 (cm)</span>
+                
+                <span class="control-label">색상 변경</span>
+                <div class="input-row">
+                    <div style="flex:1">
+                        <span style="font-size:10px; color:#aaa;">바닥</span>
+                        <input type="color" id="editRoomFloorColor" onchange="updateRoomFloorColor()" oninput="updateRoomFloorColor()">
+                    </div>
+                    <div style="flex:1">
+                        <span style="font-size:10px; color:#aaa;">벽</span>
+                        <input type="color" id="editRoomWallColor" onchange="updateRoomWallColor()" oninput="updateRoomWallColor()">
+                    </div>
+                </div>
+
+                <span class="control-label" style="margin-top:10px;">크기 조절 (cm)</span>
                 <div class="input-row">
                     <input type="number" id="editRoomW" placeholder="가로" onchange="updateSelectedRoomSize()">
                     <input type="number" id="editRoomH" placeholder="세로" onchange="updateSelectedRoomSize()">
@@ -210,10 +241,15 @@
                 <select id="newFurnitureType">
                     <optgroup label="가구">
                         <option value="bed">침대</option>
+                        <option value="sofa">쇼파</option>
+                        <option value="massage_chair">안마기</option>
                         <option value="desk">책상</option>
                         <option value="wardrobe">옷장</option>
                         <option value="vanity">화장대</option>
                         <option value="table">식탁</option>
+                        <option value="pantry">팬트리 선반</option>
+                        <option value="cattower">캣타워</option>
+                        <option value="doghouse">강아지집</option>
                         <option value="box">기본 박스</option>
                     </optgroup>
                     <optgroup label="가전제품">
@@ -224,6 +260,9 @@
                         <option value="tv_wall">TV (벽걸이)</option>
                     </optgroup>
                     <optgroup label="인테리어/기타">
+                        <option value="plant">화분</option>
+                        <option value="aquarium">수족관</option>
+                        <option value="curtain">커튼</option>
                         <option value="lamp">조명 (스탠드)</option>
                         <option value="door">문 (Door)</option>
                         <option value="window">창문</option>
@@ -236,6 +275,10 @@
         <!-- 가구 선택 패널 -->
         <div id="selection-panel" class="control-group" style="display:none;">
             <span class="control-label" style="color: #4fc3f7;">선택됨: <span id="selected-name">-</span></span>
+            
+            <span class="control-label" style="margin-top:5px;">가구 색상</span>
+            <input type="color" id="editFurnitureColor" onchange="updateFurnitureColor()" oninput="updateFurnitureColor()">
+
             <span class="control-label" style="margin-top:5px;">
                 회전 <span id="displayRotation" class="size-display">0°</span>
             </span>
@@ -410,6 +453,200 @@
             onMouseMove(e);
         }
 
+        // --- 데이터 저장/불러오기 ---
+        function saveData() {
+            try {
+                const roomsData = rooms.map(r => {
+                    const floor = r.mesh.children.find(c => c.userData.isFloor);
+                    const wall = r.mesh.children.find(c => c.userData.isWall);
+                    return {
+                        id: r.id,
+                        name: r.mesh.userData.name,
+                        w: r.mesh.userData.w,
+                        h: r.mesh.userData.h,
+                        posX: r.mesh.position.x,
+                        posZ: r.mesh.position.z,
+                        floorColor: floor ? floor.material.color.getHex() : 0xE5CFAA,
+                        wallColor: wall ? wall.material.color.getHex() : 0xffffff
+                    };
+                });
+
+                const furnituresData = furnitures.map(f => {
+                    const parentRoom = (f.parent && f.parent.userData.isRoom) ? f.parent.userData.id : null;
+                    let color = f.userData.originalColor;
+                    let tinted = false;
+                    f.traverse(child => { 
+                        if(child.isMesh && child.userData.canTint) {
+                            color = child.material.color.getHex();
+                            tinted = true;
+                        }
+                    });
+                    if(!tinted && f.material && f.material.color) color = f.material.color.getHex();
+
+                    return {
+                        type: f.userData.type,
+                        label: f.userData.label,
+                        posX: f.position.x,
+                        posY: f.position.y,
+                        posZ: f.position.z,
+                        rotY: f.rotation.y,
+                        scaleX: f.scale.x,
+                        scaleZ: f.scale.z,
+                        color: color,
+                        parentRoomId: parentRoom
+                    };
+                });
+
+                const data = {
+                    rooms: roomsData,
+                    furnitures: furnituresData
+                };
+
+                const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `home_data_${new Date().getTime()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                alert("저장되었습니다!");
+
+            } catch (err) {
+                console.error("저장 실패:", err);
+                alert("저장 중 오류가 발생했습니다.");
+            }
+        }
+
+        function loadData(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    clearAll();
+                    
+                    const roomMap = {};
+                    if(data.rooms) {
+                        data.rooms.forEach(rd => {
+                            const newRoomMesh = restoreRoom(rd);
+                            roomMap[rd.id] = newRoomMesh;
+                        });
+                    }
+
+                    if(data.furnitures) {
+                        data.furnitures.forEach(fd => {
+                            restoreFurniture(fd, roomMap);
+                        });
+                    }
+
+                    if(rooms.length > 0) {
+                        activeRoom = rooms[0].mesh;
+                        updateActiveRoomDisplay();
+                    }
+                    
+                    updateLabelsPos(); 
+
+                    controls.enabled = true;
+                    if(!is2D) controls.enableRotate = true;
+                    
+                    deselectObject(); 
+                    
+                    alert("불러오기 완료!");
+
+                } catch (err) {
+                    console.error("파일 로드 오류:", err);
+                    alert("파일을 불러오는 중 오류가 발생했습니다.");
+                }
+            };
+            reader.readAsText(file);
+            input.value = ''; 
+        }
+
+        function clearAll() {
+            [...furnitures].forEach(f => {
+                f.parent.remove(f);
+                if(f.userData.labelEl) f.userData.labelEl.remove();
+            });
+            furnitures = [];
+
+            [...rooms].forEach(r => {
+                scene.remove(r.mesh);
+                if(r.mesh.userData.labelEl) r.mesh.userData.labelEl.remove();
+            });
+            rooms = [];
+            roomCounter = 0;
+            
+            selectedObject = null;
+            activeRoom = null;
+            deselectObject();
+        }
+
+        function restoreRoom(rd) {
+            const roomGroup = new THREE.Group();
+            roomGroup.userData = { isRoom: true, id: rd.id, w: rd.w, h: rd.h, name: rd.name };
+
+            const floorGeo = new THREE.BoxGeometry(rd.w, 1, rd.h);
+            const floorMat = new THREE.MeshStandardMaterial({ color: rd.floorColor });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.position.y = -0.5;
+            floor.receiveShadow = true;
+            floor.userData = { isFloor: true, parentRoomId: rd.id };
+            roomGroup.add(floor);
+
+            const wallMat = new THREE.MeshStandardMaterial({ color: rd.wallColor });
+            const thick = 1;
+            const height = WALL_HEIGHT;
+            const back = new THREE.Mesh(new THREE.BoxGeometry(rd.w + thick*2, height, thick), wallMat);
+            back.position.set(0, height/2, -rd.h/2 - thick/2);
+            back.userData = { isWall: true };
+            roomGroup.add(back);
+            const left = new THREE.Mesh(new THREE.BoxGeometry(thick, height, rd.h), wallMat.clone()); 
+            left.position.set(-rd.w/2 - thick/2, height/2, 0);
+            left.userData = { isWall: true };
+            roomGroup.add(left);
+
+            roomGroup.position.set(rd.posX, 0, rd.posZ);
+            scene.add(roomGroup);
+            rooms.push({ mesh: roomGroup, id: rd.id });
+            createRoomLabel(roomGroup, rd.name);
+            
+            const idNum = parseInt(rd.id.replace('room_', ''));
+            if(!isNaN(idNum) && idNum > roomCounter) roomCounter = idNum;
+
+            return roomGroup;
+        }
+
+        function restoreFurniture(fd, roomMap) {
+            addFurniture(fd.type, fd.label);
+            const newMesh = furnitures[furnitures.length - 1]; 
+            
+            newMesh.position.set(fd.posX, fd.posY, fd.posZ);
+            newMesh.rotation.y = fd.rotY;
+            newMesh.scale.set(fd.scaleX, 1, fd.scaleZ);
+
+            newMesh.userData.originalColor = fd.color;
+            let tinted = false;
+            newMesh.traverse(child => {
+                if(child.isMesh && child.userData.canTint) {
+                    child.material.color.setHex(fd.color);
+                    tinted = true;
+                }
+            });
+            if(!tinted && newMesh.isMesh && newMesh.material.color) newMesh.material.color.setHex(fd.color);
+
+            if (fd.parentRoomId && roomMap[fd.parentRoomId]) {
+                newMesh.parent.remove(newMesh); 
+                roomMap[fd.parentRoomId].add(newMesh);
+            }
+            
+            updateLabel(newMesh);
+        }
+
         // --- 방(Room) 관리 ---
         function handleAddRoom() {
             const nameInput = document.getElementById('newRoomName');
@@ -470,10 +707,14 @@
         }
 
         function updateRoomWalls(roomGroup, w, h) {
+            let oldColor = 0xffffff;
+            const oldWall = roomGroup.children.find(c => c.userData.isWall);
+            if(oldWall) oldColor = oldWall.material.color.getHex();
+
             for(let i = roomGroup.children.length - 1; i >= 0; i--) {
                 if(roomGroup.children[i].userData.isWall) roomGroup.remove(roomGroup.children[i]);
             }
-            const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const wallMat = new THREE.MeshStandardMaterial({ color: oldColor });
             const thick = 1;
             const height = WALL_HEIGHT;
             const back = new THREE.Mesh(new THREE.BoxGeometry(w + thick*2, height, thick), wallMat);
@@ -484,6 +725,45 @@
             left.position.set(-w/2 - thick/2, height/2, 0);
             left.userData = { isWall: true };
             roomGroup.add(left);
+        }
+
+        function updateRoomFloorColor() {
+            if (!selectedObject || !selectedObject.userData.isFloor) return;
+            const colorVal = document.getElementById('editRoomFloorColor').value;
+            selectedObject.material.color.set(colorVal);
+        }
+
+        function updateRoomWallColor() {
+            if (!selectedObject || !selectedObject.userData.isFloor) return;
+            const roomGroup = selectedObject.parent;
+            const colorVal = document.getElementById('editRoomWallColor').value;
+            roomGroup.children.forEach(child => {
+                if(child.userData.isWall) {
+                    child.material.color.set(colorVal);
+                }
+            });
+        }
+
+        function updateFurnitureColor() {
+            if (!selectedObject || !selectedObject.userData.isFurniture) return;
+            const colorVal = document.getElementById('editFurnitureColor').value;
+            
+            let tinted = false;
+            selectedObject.traverse((child) => {
+                if (child.isMesh && child.userData.canTint) {
+                    child.material.color.set(colorVal);
+                    tinted = true;
+                }
+            });
+            
+            if (!tinted) {
+                if(selectedObject.isMesh) {
+                    selectedObject.material.color.set(colorVal);
+                } else {
+                    const firstMesh = selectedObject.children.find(c => c.isMesh);
+                    if(firstMesh) firstMesh.material.color.set(colorVal);
+                }
+            }
         }
 
         function updateSelectedRoomSize() {
@@ -543,32 +823,88 @@
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true; 
                 startY = baseSize.h/2;
                 const mat = new THREE.Mesh(
                     new THREE.BoxGeometry(13.5, 2, 19.5), 
                     new THREE.MeshStandardMaterial({color:0xAACCFF}) 
                 );
                 mat.position.y = 2; mesh.add(mat);
+            } else if (type === 'sofa') {
+                baseSize = { w:16, h:6, d:7 };
+                mesh = new THREE.Group();
+                mesh.userData.canTint = true; 
+                startY = 3; 
+                const fabricMat = new THREE.MeshStandardMaterial({ color: 0x708090 }); 
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(16, 3, 7), fabricMat);
+                seat.userData.canTint = true;
+                mesh.add(seat);
+                const back = new THREE.Mesh(new THREE.BoxGeometry(16, 6, 2), fabricMat);
+                back.position.set(0, 4.5, -2.5);
+                back.userData.canTint = true;
+                mesh.add(back);
+                const armL = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 7), fabricMat);
+                armL.position.set(-7, 2, 0);
+                armL.userData.canTint = true;
+                mesh.add(armL);
+                const armR = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 7), fabricMat);
+                armR.position.set(7, 2, 0);
+                armR.userData.canTint = true;
+                mesh.add(armR);
+            } else if (type === 'massage_chair') {
+                baseSize = { w:8, h:12, d:10 };
+                mesh = new THREE.Group();
+                mesh.userData.canTint = true;
+                startY = 6;
+                const leatherMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }); 
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 6), leatherMat);
+                seat.position.y = -4; seat.userData.canTint = true;
+                mesh.add(seat);
+                const back = new THREE.Mesh(new THREE.BoxGeometry(6, 12, 3), leatherMat);
+                back.position.set(0, 2, -3); back.rotation.x = -0.2; 
+                back.userData.canTint = true;
+                mesh.add(back);
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 4), leatherMat);
+                leg.position.set(0, -5, 4); leg.rotation.x = -0.3;
+                leg.userData.canTint = true;
+                mesh.add(leg);
+                const armL = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 8), leatherMat);
+                armL.position.set(-3.5, -2, 0); armL.userData.canTint = true;
+                mesh.add(armL);
+                const armR = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 8), leatherMat);
+                armR.position.set(3.5, -2, 0); armR.userData.canTint = true;
+                mesh.add(armR);
+                const head = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 2), new THREE.MeshStandardMaterial({color:0x550000}));
+                head.position.set(0, 7, -3.5);
+                mesh.add(head);
             } else if (type === 'desk') {
                 baseSize = { w:12, h:7, d:6 };
                 geometry = new THREE.BoxGeometry(baseSize.w, 0.5, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xA0522D });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h;
                 const lG = new THREE.BoxGeometry(1,7,1);
                 const lM = new THREE.MeshStandardMaterial({color:0x333});
-                [-1,1].forEach(x=>[-1,1].forEach(z=>{ const l = new THREE.Mesh(lG,lM); l.position.set(x*(baseSize.w/2-1), -3.5, z*(baseSize.d/2-1)); mesh.add(l); }));
+                [-1,1].forEach(x=>[-1,1].forEach(z=>{ 
+                    const l = new THREE.Mesh(lG,lM); 
+                    l.position.set(x*(baseSize.w/2-1), -3.5, z*(baseSize.d/2-1)); 
+                    l.userData.canTint = true; 
+                    mesh.add(l); 
+                }));
             } else if (type === 'vanity') {
                 baseSize = { w:10, h:7, d:5 };
                 geometry = new THREE.BoxGeometry(baseSize.w, 0.5, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xFFB6C1 });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h;
                 const lG = new THREE.BoxGeometry(0.8, 7, 0.8);
                 const lM = new THREE.MeshStandardMaterial({ color: 0x888888 });
                 [-1,1].forEach(x=>[-1,1].forEach(z=>{ const l = new THREE.Mesh(lG,lM); l.position.set(x*(baseSize.w/2-1), -3.5, z*(baseSize.d/2-1)); mesh.add(l); }));
                 const mirrorFrame = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 0.5), new THREE.MeshStandardMaterial({ color: 0xFFB6C1 }));
                 mirrorFrame.position.set(0, 3.25, -baseSize.d/2 + 0.5);
+                mirrorFrame.userData.canTint = true;
                 mesh.add(mirrorFrame);
                 const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(7, 5), new THREE.MeshStandardMaterial({ color: 0xADD8E6, metalness: 0.8, roughness: 0.1 }));
                 mirrorGlass.position.z = 0.3;
@@ -578,15 +914,22 @@
                 geometry = new THREE.BoxGeometry(baseSize.w, 0.5, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xDEB887 });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h;
                 const lG = new THREE.BoxGeometry(1.2, 7, 1.2);
                 const lM = new THREE.MeshStandardMaterial({ color: 0xD2B48C });
-                [-1,1].forEach(x=>[-1,1].forEach(z=>{ const l = new THREE.Mesh(lG,lM); l.position.set(x*(baseSize.w/2-1.5), -3.5, z*(baseSize.d/2-1.5)); mesh.add(l); }));
+                [-1,1].forEach(x=>[-1,1].forEach(z=>{ 
+                    const l = new THREE.Mesh(lG,lM); 
+                    l.position.set(x*(baseSize.w/2-1.5), -3.5, z*(baseSize.d/2-1.5)); 
+                    l.userData.canTint = true;
+                    mesh.add(l); 
+                }));
             } else if (type === 'kitchen') {
                 baseSize = { w:18, h:9, d:6 };
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0x9E9E9E });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h / 2;
                 const top = new THREE.Mesh(new THREE.BoxGeometry(baseSize.w + 0.5, 0.5, baseSize.d + 0.5), new THREE.MeshStandardMaterial({ color: 0x333333 }));
                 top.position.y = baseSize.h / 2 + 0.25;
@@ -606,6 +949,7 @@
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xE0E0E0, metalness: 0.3, roughness: 0.2 });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h / 2;
                 const line = new THREE.Mesh(new THREE.BoxGeometry(baseSize.w+0.1, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x333333 }));
                 line.position.set(0, 2, baseSize.d/2);
@@ -618,6 +962,7 @@
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xF5F5F5 });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h / 2;
                 const doorGeo = new THREE.CylinderGeometry(2.2, 2.2, 0.5, 32);
                 const doorMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.5, roughness: 0.1 });
@@ -633,6 +978,7 @@
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
                 mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.canTint = true;
                 startY = baseSize.h / 2;
                 const vent = new THREE.Mesh(new THREE.BoxGeometry(baseSize.w-0.2, 4, 0.2), new THREE.MeshStandardMaterial({ color: 0x111111 }));
                 vent.position.set(0, 5, baseSize.d/2);
@@ -645,6 +991,7 @@
                 geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
                 material = new THREE.MeshStandardMaterial({ color: 0x111111, metalness:0.6, roughness:0.2 });
                 mesh = new THREE.Mesh(geometry, material);
+                // TV 몸체는 색상 변경 안함
                 startY = 15;
                 const screen = new THREE.Mesh(new THREE.PlaneGeometry(baseSize.w-0.5, baseSize.h-0.5), new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x111111 }));
                 screen.position.z = baseSize.d/2 + 0.01;
@@ -652,10 +999,12 @@
             } else if (type === 'wardrobe') {
                 baseSize = { w:8, h:18, d:6 };
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(8,18,6), new THREE.MeshStandardMaterial({color:0x555}));
+                mesh.userData.canTint = true;
                 startY = 9;
             } else if (type === 'lamp') {
                 baseSize = { w:3, h:10, d:3 };
                 mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.5,8), new THREE.MeshStandardMaterial({color:0x222}));
+                mesh.userData.canTint = true; 
                 startY = 4;
                 const shade = new THREE.Mesh(new THREE.ConeGeometry(2,2,16,1,true), new THREE.MeshStandardMaterial({color:0xffd700, emissive:0xffd700, emissiveIntensity:0.5, side:2}));
                 shade.position.y=3; mesh.add(shade);
@@ -664,6 +1013,7 @@
             } else if (type === 'door') {
                 baseSize = { w:9, h:21, d:0.5 };
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(9,21,0.5), new THREE.MeshStandardMaterial({color:0x8b4513}));
+                mesh.userData.canTint = true;
                 startY = 10.5;
                 const k = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({color:0xffd700}));
                 k.position.set(3.5,0,0.4); mesh.add(k);
@@ -676,15 +1026,150 @@
                 const frame = new THREE.Group();
                 const top = new THREE.Mesh(new THREE.BoxGeometry(13,0.5,1), fM); top.position.y=6; frame.add(top);
                 const bot = new THREE.Mesh(new THREE.BoxGeometry(13,0.5,1), fM); bot.position.y=-6; frame.add(bot);
+                top.userData.canTint = true;
+                bot.userData.canTint = true;
+                mesh.add(frame);
                 const l = new THREE.Mesh(new THREE.BoxGeometry(0.5,12,1), fM); l.position.x=-6; frame.add(l);
                 const r = new THREE.Mesh(new THREE.BoxGeometry(0.5,12,1), fM); r.position.x=6; frame.add(r);
                 const glass = new THREE.Mesh(new THREE.BoxGeometry(11.5,11.5,0.2), glassM); frame.add(glass);
-                const cross = new THREE.Mesh(new THREE.BoxGeometry(12,0.3,0.4), fM); frame.add(cross);
-                const v = new THREE.Mesh(new THREE.BoxGeometry(0.3,12,0.4), fM); frame.add(v);
-                mesh.add(frame);
+                l.userData.canTint = true; r.userData.canTint = true;
+            } else if (type === 'aquarium') {
+                baseSize = { w:8, h:6, d:4 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(8,6,4), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 3; 
+                const stand = new THREE.Mesh(new THREE.BoxGeometry(8,2,4), new THREE.MeshStandardMaterial({color:0x333333}));
+                stand.position.y = -2;
+                stand.userData.canTint = true;
+                mesh.add(stand);
+                const sand = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.3, 3.6), new THREE.MeshStandardMaterial({color:0xE1C699}));
+                sand.position.y = -0.8;
+                mesh.add(sand);
+                const plantGeo = new THREE.ConeGeometry(0.15, 1.2, 8);
+                const plantMat = new THREE.MeshStandardMaterial({color:0x228B22});
+                for(let i=0; i<6; i++) {
+                    const plant = new THREE.Mesh(plantGeo, plantMat);
+                    plant.position.set((Math.random() - 0.5) * 6, -0.2, (Math.random() - 0.5) * 2.5);
+                    plant.rotation.z = (Math.random() - 0.5) * 0.3; 
+                    plant.scale.set(1, 0.8 + Math.random()*0.5, 1); 
+                    mesh.add(plant);
+                }
+                const fishGeo = new THREE.ConeGeometry(0.15, 0.5, 8);
+                const fishTailGeo = new THREE.ConeGeometry(0.1, 0.2, 8);
+                const fishMat = new THREE.MeshStandardMaterial({color:0xFF8C00});
+                for(let j=0; j<4; j++) {
+                    const fish = new THREE.Group();
+                    const body = new THREE.Mesh(fishGeo, fishMat);
+                    body.rotation.z = -Math.PI / 2;
+                    const tail = new THREE.Mesh(fishTailGeo, fishMat);
+                    tail.rotation.z = Math.PI / 2;
+                    tail.position.x = -0.35;
+                    fish.add(body);
+                    fish.add(tail);
+                    fish.position.set((Math.random() - 0.5) * 5, 0.5 + (Math.random() * 1.5), (Math.random() - 0.5) * 2);
+                    fish.rotation.y = Math.random() * Math.PI * 2; 
+                    mesh.add(fish);
+                }
+                const water = new THREE.Mesh(new THREE.BoxGeometry(7.6, 3.5, 3.6), new THREE.MeshPhongMaterial({color:0x00FFFF, transparent:true, opacity:0.3, shininess: 90}));
+                water.position.y = 0.8;
+                mesh.add(water);
+                const glassMat = new THREE.MeshPhysicalMaterial({color: 0xffffff, metalness: 0, roughness: 0, transparent: true, opacity: 0.15, side: THREE.DoubleSide});
+                const glassBox = new THREE.Mesh(new THREE.BoxGeometry(7.8, 3.8, 3.8), glassMat);
+                glassBox.position.y = 0.9;
+                mesh.add(glassBox);
+                const lid = new THREE.Mesh(new THREE.BoxGeometry(8, 0.2, 4), new THREE.MeshStandardMaterial({color:0x222222}));
+                lid.position.y = 2.9;
+                mesh.add(lid);
+            } else if (type === 'curtain') {
+                baseSize = { w:14, h:20, d:1 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(14,20,1), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 12; 
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,16), new THREE.MeshStandardMaterial({color:0x888888}));
+                pole.rotation.z = Math.PI/2;
+                pole.position.y = 9;
+                mesh.add(pole);
+                const clothGeo = new THREE.BoxGeometry(6,18,0.2);
+                const clothMat = new THREE.MeshStandardMaterial({color:0xF5F5DC, side:THREE.DoubleSide});
+                const leftC = new THREE.Mesh(clothGeo, clothMat);
+                leftC.position.set(-3.5, 0, 0);
+                leftC.userData.canTint = true;
+                mesh.add(leftC);
+                const rightC = new THREE.Mesh(clothGeo, clothMat.clone());
+                rightC.position.set(3.5, 0, 0);
+                rightC.userData.canTint = true;
+                mesh.add(rightC);
+            } else if (type === 'cattower') {
+                baseSize = { w:5, h:15, d:5 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(5,15,5), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 7.5;
+                const mat = new THREE.MeshStandardMaterial({color:0xF5F5DC}); 
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,15), new THREE.MeshStandardMaterial({color:0x8B4513}));
+                mesh.add(pole);
+                const base = new THREE.Mesh(new THREE.BoxGeometry(5,1,5), mat);
+                base.position.y = -7; base.userData.canTint = true; mesh.add(base);
+                const mid = new THREE.Mesh(new THREE.BoxGeometry(4,0.5,4), mat.clone());
+                mid.position.y = 0; mid.userData.canTint = true; mesh.add(mid);
+                const top = new THREE.Mesh(new THREE.BoxGeometry(4,0.5,4), mat.clone());
+                top.position.y = 7; top.userData.canTint = true; mesh.add(top);
+            } else if (type === 'doghouse') {
+                baseSize = { w:6, h:6, d:7 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(6,6,7), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 3;
+                const body = new THREE.Mesh(new THREE.BoxGeometry(6,4,7), new THREE.MeshStandardMaterial({color:0xFFE4C4}));
+                body.position.y = -1;
+                body.userData.canTint = true;
+                mesh.add(body);
+                const roofGeo = new THREE.CylinderGeometry(4.5, 4.5, 7, 3);
+                const roofMat = new THREE.MeshStandardMaterial({color:0xA52A2A});
+                const r1 = new THREE.Mesh(new THREE.BoxGeometry(5,0.5,8), roofMat);
+                r1.position.set(-1.5, 2.5, 0); r1.rotation.z = Math.PI/4;
+                mesh.add(r1);
+                const r2 = new THREE.Mesh(new THREE.BoxGeometry(5,0.5,8), roofMat);
+                r2.position.set(1.5, 2.5, 0); r2.rotation.z = -Math.PI/4;
+                mesh.add(r2);
+                const hole = new THREE.Mesh(new THREE.CircleGeometry(1.5, 32), new THREE.MeshBasicMaterial({color:0x222}));
+                hole.position.set(0, -1, 3.51);
+                mesh.add(hole);
+            } else if (type === 'plant') {
+                baseSize = { w:4, h:8, d:4 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(4,8,4), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 4;
+                const pot = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1, 3, 16), new THREE.MeshStandardMaterial({color:0x8B4513}));
+                pot.position.y = -2.5;
+                pot.userData.canTint = true;
+                mesh.add(pot);
+                const dirt = new THREE.Mesh(new THREE.CircleGeometry(1.4, 16), new THREE.MeshStandardMaterial({color:0x3d2817}));
+                dirt.rotation.x = -Math.PI/2; dirt.position.y = -1.1;
+                mesh.add(dirt);
+                const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 3), new THREE.MeshStandardMaterial({color:0x228B22}));
+                stem.position.y = 0.5;
+                mesh.add(stem);
+                const leafGeo = new THREE.SphereGeometry(1.5, 8, 8);
+                const leafMat = new THREE.MeshStandardMaterial({color:0x32CD32});
+                const leaves = new THREE.Mesh(leafGeo, leafMat);
+                leaves.position.y = 2.5; leaves.scale.y = 0.8;
+                mesh.add(leaves);
+            } else if (type === 'pantry') {
+                baseSize = { w:8, h:18, d:4 };
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(8,18,4), new THREE.MeshBasicMaterial({visible:false}));
+                startY = 9;
+                const shelfMat = new THREE.MeshStandardMaterial({color:0x808080});
+                const poleGeo = new THREE.BoxGeometry(0.2, 18, 0.2);
+                const poleColor = new THREE.MeshStandardMaterial({color:0x333333});
+                const p1 = new THREE.Mesh(poleGeo, poleColor); p1.position.set(-3.8, 0, -1.8); mesh.add(p1);
+                const p2 = new THREE.Mesh(poleGeo, poleColor); p2.position.set(3.8, 0, -1.8); mesh.add(p2);
+                const p3 = new THREE.Mesh(poleGeo, poleColor); p3.position.set(-3.8, 0, 1.8); mesh.add(p3);
+                const p4 = new THREE.Mesh(poleGeo, poleColor); p4.position.set(3.8, 0, 1.8); mesh.add(p4);
+                
+                for(let i=0; i<5; i++) {
+                    const shelf = new THREE.Mesh(new THREE.BoxGeometry(8, 0.3, 4), shelfMat.clone());
+                    shelf.position.y = -8 + i * 4;
+                    shelf.userData.canTint = true;
+                    mesh.add(shelf);
+                }
             } else { 
                 baseSize = { w:5, h:5, d:5 };
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(5,5,5), new THREE.MeshStandardMaterial({color:0xccc}));
+                mesh.userData.canTint = true;
                 startY = 2.5;
             }
 
@@ -919,8 +1404,6 @@
             
             if (obj.userData.isFloor) {
                 activeRoom = obj.parent; 
-                // [수정] emissive로 강조
-                // obj.material.color.setHex(0xaaddff); 
                 obj.material.emissive.setHex(0x444444); 
                 updateActiveRoomDisplay();
                 
@@ -930,6 +1413,9 @@
                     document.getElementById('editRoomName').value = obj.parent.userData.name;
                     document.getElementById('editRoomW').value = obj.parent.userData.w * UNIT_TO_CM;
                     document.getElementById('editRoomH').value = obj.parent.userData.h * UNIT_TO_CM;
+                    document.getElementById('editRoomFloorColor').value = '#' + obj.material.color.getHexString();
+                    const wall = obj.parent.children.find(c => c.userData.isWall);
+                    if(wall) document.getElementById('editRoomWallColor').value = '#' + wall.material.color.getHexString();
                 }
                 document.getElementById('selection-panel').style.display = 'none';
             }
@@ -946,6 +1432,22 @@
                 document.getElementById('rotation').value = deg % 360;
                 document.getElementById('displayRotation').textContent = (deg % 360) + '°';
 
+                let targetColor = null;
+                obj.traverse((child) => {
+                    if (child.isMesh && child.userData.canTint) {
+                        targetColor = child.material.color;
+                    }
+                });
+                if (!targetColor && obj.material && obj.material.color && obj.visible) {
+                    targetColor = obj.material.color;
+                }
+                
+                if (targetColor) {
+                    document.getElementById('editFurnitureColor').value = '#' + targetColor.getHexString();
+                } else {
+                     document.getElementById('editFurnitureColor').value = '#ffffff';
+                }
+
                 updateLabel(obj);
                 updateActiveRoomDisplay();
                 
@@ -956,12 +1458,9 @@
         function deselectObject() {
             if(!selectedObject) return;
 
-            // [수정] 회전 복구 (2D 체크)
             if(!is2D) controls.enableRotate = true;
 
             if (selectedObject.userData.isFloor) {
-                // [수정] 선택 해제 시 emissive 끄기
-                // selectedObject.material.color.setHex(0xE5CFAA); 
                 selectedObject.material.emissive.setHex(0x000000);
                 document.getElementById('room-edit-panel').style.display = 'none';
             }
@@ -1048,11 +1547,41 @@
         }
 
         function saveSceneAsImage() {
+            // 렌더링 업데이트
             renderer.render(scene, camera);
-            const link = document.createElement('a');
-            link.download = `home_design.png`;
-            link.href = renderer.domElement.toDataURL("image/png");
-            link.click();
+            updateLabelsPos(); 
+            
+            // UI 숨기기
+            const uiLayer = document.getElementById('ui-layer');
+            const toggleBtn = document.getElementById('ui-toggle-btn');
+            
+            // 원래 display 속성 저장
+            const originalUiDisplay = uiLayer.style.display;
+            const originalBtnDisplay = toggleBtn.style.display;
+
+            uiLayer.style.display = 'none';
+            toggleBtn.style.display = 'none';
+
+            // html2canvas로 전체 화면 캡처
+            html2canvas(document.body, {
+                backgroundColor: '#1a1a1a', 
+                useCORS: true, 
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `home_design_${new Date().getTime()}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+                
+                // UI 복구
+                uiLayer.style.display = originalUiDisplay;
+                toggleBtn.style.display = originalBtnDisplay;
+            }).catch(err => {
+                console.error("캡처 실패:", err);
+                alert("도면 저장 중 오류가 발생했습니다.");
+                // 에러 발생 시에도 UI 복구
+                uiLayer.style.display = originalUiDisplay;
+                toggleBtn.style.display = originalBtnDisplay;
+            });
         }
 
         function onWindowResize() {
