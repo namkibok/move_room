@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 집 꾸미기 (모바일 이동 수정)</title>
+    <title>3D 집 꾸미기 (모바일 스크롤 수정)</title>
     <style>
         body {
             margin: 0;
@@ -85,6 +85,10 @@
             pointer-events: auto;
             transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
             z-index: 1000;
+            
+            /* 모바일 스크롤 허용 설정 */
+            touch-action: pan-y; 
+            -webkit-overflow-scrolling: touch;
         }
         
         @media (max-width: 768px) {
@@ -737,8 +741,29 @@
             if(selectedObject && selectedObject.userData.isFurniture) deselectObject();
         }
 
+        function onTouchStart(e) { 
+            // UI 내부 터치 시 기본 동작 허용 (스크롤 등), 3D 조작 차단
+            if (e.target.closest('#ui-layer') || e.target.closest('#ui-toggle-btn')) {
+                return;
+            }
+            e.preventDefault(); 
+            onMouseDown(e); 
+        }
+        
+        function onTouchMove(e) { 
+            // UI 내부 터치 시 스크롤 허용
+            if (e.target.closest('#ui-layer')) {
+                return;
+            }
+            e.preventDefault(); 
+            onMouseMove(e); 
+        }
+
         function onMouseDown(event) {
-            // [수정] 모바일 터치 대응 (button 체크 패스)
+            // UI 패널 클릭 시 캔버스 로직 무시
+            if (event.target.closest('#ui-layer') || event.target.closest('#ui-toggle-btn')) return;
+
+            // 모바일 터치 대응 (button 체크 패스)
             if (event.type !== 'touchstart' && event.button !== 0) return;
             
             updateMouse(event);
@@ -845,7 +870,6 @@
             if(isDragging) {
                 isDragging = false;
                 controls.enabled = true;
-                // [수정] 2D 모드일 때만 회전 잠금 유지, 3D는 회전 가능
                 if(!is2D) {
                     controls.enableRotate = true;
                 } else {
@@ -900,11 +924,10 @@
         function deselectObject() {
             if(!selectedObject) return;
 
-            // [수정] 회전 복구 (2D 체크)
             if(!is2D) controls.enableRotate = true;
 
             if (selectedObject.userData.isFloor) {
-                selectedObject.material.emissive.setHex(0x000000); // emissive 끄기
+                selectedObject.material.emissive.setHex(0x000000); 
                 document.getElementById('room-edit-panel').style.display = 'none';
             }
             else if (selectedObject.userData.isFurniture) {
@@ -997,8 +1020,6 @@
             link.click();
         }
 
-        function onTouchStart(e) { e.preventDefault(); onMouseDown(e); }
-        function onTouchMove(e) { e.preventDefault(); onMouseMove(e); }
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
