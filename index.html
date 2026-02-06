@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 내 방 꾸미기 Pro (CM 단위 적용)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        /* 라벨 컨테이너 */
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .obj-label {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+            transform: translate(-50%, -100%);
+            pointer-events: none;
+            transition: opacity 0.2s;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
+            width: 280px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-height: 90vh;
+            overflow-y: auto;
+            pointer-events: auto;
+        }
+        #ui-layer::-webkit-scrollbar { width: 6px; }
+        #ui-layer::-webkit-scrollbar-thumb { background-color: #555; border-radius: 3px; }
+        
+        h1 {
+            font-size: 18px;
+            margin: 0 0 15px 0;
+            color: #eee;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+        .control-group {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 15px;
+        }
+        .control-group:last-child { border-bottom: none; }
+        .control-label {
+            font-size: 12px; 
+            color:#aaa; 
+            margin-bottom: 8px; 
+            display: block;
+            font-weight: bold;
+        }
+        .size-display {
+            float: right;
+            color: #ffd700;
+            font-weight: normal;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: all 0.2s;
+            text-align: center;
+            color: white;
+        }
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .btn-view { background-color: #3b82f6; }
+        .btn-save { background-color: #10b981; }
+        .btn-danger { background-color: #d32f2f; }
+        
+        .input-row { display: flex; gap: 5px; margin-bottom: 5px; }
+        input[type="number"], input[type="text"], select {
+            width: 100%; padding: 8px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box;
+        }
+        input[type="range"] { width: 100%; margin: 5px 0; cursor: pointer; }
+        
+        #selection-panel {
+            display: none;
+            background: rgba(60, 60, 60, 0.4);
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .instruction {
+            margin-top: 10px; font-size: 11px; color: #888; line-height: 1.4;
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="labels-container"></div>
+
+    <div id="ui-layer">
+        <h1>🛠️ 방 꾸미기 설정</h1>
+        
+        <!-- 뷰 및 저장 -->
+        <div class="control-group">
+            <button class="btn btn-view" id="toggleViewBtn" onclick="toggleView()">뷰 전환 (3D ↔ 2D)</button>
+            <button class="btn btn-save" onclick="saveSceneAsImage()">📷 도면 이미지 저장 (.png)</button>
+        </div>
+
+        <!-- 방 크기 조절 -->
+        <div class="control-group">
+            <span class="control-label">방 크기 설정 (단위: cm)</span>
+            <div class="input-row">
+                <!-- 기본값 400cm (4m) -->
+                <input type="number" id="roomW" value="400" min="200" max="1500" placeholder="가로 (cm)">
+                <input type="number" id="roomH" value="400" min="200" max="1500" placeholder="세로 (cm)">
+                <button class="btn btn-view" style="width: 60px; margin:0;" onclick="updateRoomSize()">적용</button>
+            </div>
+        </div>
+
+        <!-- 가구 추가 (사용자 입력 방식) -->
+        <div class="control-group">
+            <span class="control-label">신규 가구 추가</span>
+            <input type="text" id="newFurnitureName" placeholder="가구 이름 입력 (예: 내 책상)" style="margin-bottom: 8px;">
+            <div class="input-row">
+                <select id="newFurnitureType">
+                    <option value="bed">침대 (더블)</option>
+                    <option value="desk">책상</option>
+                    <option value="wardrobe">옷장</option>
+                    <option value="lamp">조명 (스탠드)</option>
+                    <option value="box">기본 박스</option>
+                </select>
+                <button class="btn btn-view" style="width: 60px; margin:0;" onclick="handleAddCustom()">추가</button>
+            </div>
+            <button class="btn btn-danger" style="margin-top: 10px;" onclick="clearRoom()">모두 지우기</button>
+        </div>
+
+        <!-- 선택된 가구 옵션 -->
+        <div id="selection-panel">
+            <span class="control-label" style="color: #4fc3f7;">선택됨: <span id="selected-name">-</span></span>
+            
+            <span class="control-label" style="margin-top:5px;">회전 (Rotation 360°)</span>
+            <input type="range" id="rotation" min="0" max="360" step="5" value="0" oninput="rotateSelected()">
+
+            <span class="control-label" style="margin-top:5px;">
+                가로 길이 (W) <span id="displayW" class="size-display">0 cm</span>
+            </span>
+            <input type="range" id="scaleX" min="0.5" max="2.5" step="0.05" value="1.0" oninput="resizeSelected()">
+            
+            <span class="control-label">
+                깊이/세로 (D) <span id="displayD" class="size-display">0 cm</span>
+            </span>
+            <input type="range" id="scaleZ" min="0.5" max="2.5" step="0.05" value="1.0" oninput="resizeSelected()">
+
+            <button class="btn btn-danger" onclick="deleteSelected()">선택 가구 삭제 🗑️</button>
+        </div>
+
+        <div class="instruction">
+            <strong>Tip:</strong><br>
+            • 방 크기는 <strong>cm 단위</strong>로 입력하세요.<br>
+            • 슬라이더를 움직여 가구 크기(cm)를 조절하세요.<br>
+            • 드래그 시 가구가 방 벽을 넘어가지 않습니다.
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // 전역 변수
+        let scene, camera, renderer;
+        let plane, gridHelper; 
+        let wallGroup = new THREE.Group();
+        let raycaster, mouse;
+        let furnitureObjects = [];
+        let isDragging = false;
+        let selectedObject = null;
+        let offset = new THREE.Vector3();
+        let is2D = false; 
+
+        // 내부 단위 설정 (1 unit = 10cm)
+        // 400cm 입력을 받으면 내부적으로 40으로 처리
+        let currentRoomW = 40; // 초기값 (400cm 대응)
+        let currentRoomH = 40; // 초기값 (400cm 대응)
+        const UNIT_TO_CM = 10; 
+        const WALL_HEIGHT = 15;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+            scene.fog = new THREE.Fog(0xf0f0f0, 50, 250);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            mainLight.position.set(50, 100, 50);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 2048;
+            mainLight.shadow.mapSize.height = 2048;
+            scene.add(mainLight);
+
+            scene.add(wallGroup);
+            createRoom(currentRoomW, currentRoomH);
+
+            // 초기 가구
+            addFurniture('bed', '내 침대');
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize, false);
+            renderer.domElement.addEventListener('mousedown', onMouseDown, false);
+            renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+            renderer.domElement.addEventListener('mouseup', onMouseUp, false);
+            renderer.domElement.addEventListener('touchstart', onTouchStart, {passive: false});
+            renderer.domElement.addEventListener('touchmove', onTouchMove, {passive: false});
+            renderer.domElement.addEventListener('touchend', onMouseUp, false);
+
+            animate();
+        }
+
+        function createRoom(width, height) {
+            // width, height는 내부 단위 (unit)
+            if(plane) scene.remove(plane);
+            if(gridHelper) scene.remove(gridHelper);
+            while(wallGroup.children.length > 0){ wallGroup.remove(wallGroup.children[0]); }
+
+            const planeGeometry = new THREE.PlaneGeometry(width, height);
+            const planeMaterial = new THREE.MeshStandardMaterial({ color: 0xdddddd, side: THREE.DoubleSide });
+            plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = -Math.PI / 2;
+            plane.receiveShadow = true;
+            plane.name = "floor";
+            scene.add(plane);
+
+            // 그리드 간격 조정
+            gridHelper = new THREE.GridHelper(Math.max(width, height), Math.max(width, height)/5, 0xcccccc, 0xe5e5e5);
+            gridHelper.position.y = 0.01;
+            scene.add(gridHelper);
+
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const thickness = 1;
+            
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(width + thickness*2, WALL_HEIGHT, thickness), wallMaterial);
+            backWall.position.set(0, WALL_HEIGHT/2, -height/2 - thickness/2);
+            backWall.receiveShadow = true;
+            wallGroup.add(backWall);
+
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(thickness, WALL_HEIGHT, height), wallMaterial);
+            leftWall.position.set(-width/2 - thickness/2, WALL_HEIGHT/2, 0);
+            leftWall.receiveShadow = true;
+            wallGroup.add(leftWall);
+        }
+
+        function updateRoomSize() {
+            // 입력값은 cm 단위
+            const w_cm = parseInt(document.getElementById('roomW').value);
+            const h_cm = parseInt(document.getElementById('roomH').value);
+            
+            if(w_cm && h_cm) {
+                // 내부 단위로 변환 ( / 10 )
+                currentRoomW = w_cm / UNIT_TO_CM;
+                currentRoomH = h_cm / UNIT_TO_CM;
+                createRoom(currentRoomW, currentRoomH);
+            }
+        }
+
+        // --- 사용자 입력 가구 추가 ---
+        function handleAddCustom() {
+            const nameInput = document.getElementById('newFurnitureName');
+            const typeSelect = document.getElementById('newFurnitureType');
+            
+            let name = nameInput.value.trim();
+            const type = typeSelect.value;
+            
+            if (!name) {
+                const typeText = typeSelect.options[typeSelect.selectedIndex].text.split(' ')[0];
+                name = `나의 ${typeText}`;
+            }
+
+            addFurniture(type, name);
+            nameInput.value = '';
+        }
+
+        function addFurniture(type, customName) {
+            let geometry, material, mesh;
+            let startY = 0;
+            let baseSize = { w: 0, h: 0, d: 0 }; // unit 단위
+
+            // 기본 사이즈 정의 (예: 14 unit = 140 cm)
+            if (type === 'bed') {
+                baseSize = { w: 14, h: 4, d: 20 }; // 140x200 cm
+                geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
+                material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+                mesh = new THREE.Mesh(geometry, material);
+                startY = baseSize.h / 2;
+                
+                const mattress = new THREE.Mesh(new THREE.BoxGeometry(baseSize.w - 0.5, 2, baseSize.d - 0.5), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                mattress.position.y = baseSize.h/2 + 1;
+                mesh.add(mattress);
+                
+                const pillow = new THREE.Mesh(new THREE.BoxGeometry(baseSize.w - 2, 1, 4), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+                pillow.position.set(0, baseSize.h/2 + 2, -baseSize.d/2 + 3);
+                mesh.add(pillow);
+
+            } else if (type === 'desk') {
+                baseSize = { w: 12, h: 7, d: 6 }; // 120x60 cm
+                geometry = new THREE.BoxGeometry(baseSize.w, 0.5, baseSize.d);
+                material = new THREE.MeshStandardMaterial({ color: 0xA0522D });
+                mesh = new THREE.Mesh(geometry, material);
+                startY = baseSize.h;
+
+                const legGeo = new THREE.BoxGeometry(1, baseSize.h, 1);
+                const legMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+                const positions = [
+                    {x: -baseSize.w/2 + 1, z: -baseSize.d/2 + 1}, {x: baseSize.w/2 - 1, z: -baseSize.d/2 + 1},
+                    {x: -baseSize.w/2 + 1, z: baseSize.d/2 - 1}, {x: baseSize.w/2 - 1, z: baseSize.d/2 - 1}
+                ];
+                positions.forEach(pos => {
+                    const leg = new THREE.Mesh(legGeo, legMat);
+                    leg.position.set(pos.x, -baseSize.h/2, pos.z);
+                    mesh.add(leg);
+                });
+
+            } else if (type === 'wardrobe') {
+                baseSize = { w: 8, h: 18, d: 6 }; // 80x60 cm
+                geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
+                material = new THREE.MeshStandardMaterial({ color: 0x555555 });
+                mesh = new THREE.Mesh(geometry, material);
+                startY = baseSize.h / 2;
+
+            } else if (type === 'lamp') {
+                baseSize = { w: 3, h: 10, d: 3 }; // 30x30 cm
+                geometry = new THREE.CylinderGeometry(0.3, 0.5, 8, 16);
+                material = new THREE.MeshStandardMaterial({ color: 0x222222 });
+                mesh = new THREE.Mesh(geometry, material);
+                startY = 4;
+
+                const shade = new THREE.Mesh(
+                    new THREE.ConeGeometry(2, 2, 32, 1, true),
+                    new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xFFD700, emissiveIntensity: 0.5, side: THREE.DoubleSide })
+                );
+                shade.position.y = 3;
+                mesh.add(shade);
+
+                const pointLight = new THREE.PointLight(0xFFAA00, 1, 30);
+                pointLight.position.set(0, 2, 0);
+                pointLight.castShadow = true;
+                mesh.add(pointLight);
+
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.5, 32), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+                base.position.y = -4;
+                mesh.add(base);
+
+            } else if (type === 'box') {
+                baseSize = { w: 5, h: 5, d: 5 }; // 50x50 cm
+                geometry = new THREE.BoxGeometry(baseSize.w, baseSize.h, baseSize.d);
+                material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+                mesh = new THREE.Mesh(geometry, material);
+                startY = baseSize.h / 2;
+            }
+
+            if (mesh) {
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                mesh.position.y = startY;
+                mesh.position.x = 0;
+                mesh.position.z = 0;
+
+                mesh.userData = { 
+                    isFurniture: true, 
+                    type: type, 
+                    label: customName,
+                    baseW: baseSize.w,
+                    baseD: baseSize.d,
+                    originalColor: material.color ? material.color.getHex() : 0xffffff
+                };
+
+                scene.add(mesh);
+                furnitureObjects.push(mesh);
+                createLabelElement(mesh);
+                selectObject(mesh);
+            }
+        }
+
+        function createLabelElement(mesh) {
+            const div = document.createElement('div');
+            div.className = 'obj-label';
+            document.getElementById('labels-container').appendChild(div);
+            mesh.userData.labelElement = div;
+            updateLabelText(mesh);
+        }
+
+        function updateLabelText(mesh) {
+            if(!mesh.userData.labelElement) return;
+            const widthCm = Math.round(mesh.userData.baseW * mesh.scale.x * UNIT_TO_CM);
+            const depthCm = Math.round(mesh.userData.baseD * mesh.scale.z * UNIT_TO_CM);
+            
+            mesh.userData.labelElement.innerHTML = `
+                <div style="font-weight:bold; color:#ffeb3b;">${mesh.userData.label}</div>
+                <div style="font-size:10px; color:#ddd;">${widthCm} x ${depthCm} cm</div>
+            `;
+            
+            // 현재 선택된 객체라면 UI의 사이즈 표시도 업데이트
+            if (mesh === selectedObject) {
+                document.getElementById('displayW').textContent = `${widthCm} cm`;
+                document.getElementById('displayD').textContent = `${depthCm} cm`;
+            }
+        }
+
+        function removeLabelElement(mesh) {
+            if (mesh.userData.labelElement) {
+                mesh.userData.labelElement.remove();
+                mesh.userData.labelElement = null;
+            }
+        }
+
+        function updateLabelsPosition() {
+            furnitureObjects.forEach(mesh => {
+                const label = mesh.userData.labelElement;
+                if (!label) return;
+
+                const pos = mesh.position.clone();
+                pos.y += 5; 
+                pos.project(camera);
+
+                if (pos.z > 1) { 
+                    label.style.display = 'none';
+                    return;
+                }
+
+                const x = (pos.x * .5 + .5) * window.innerWidth;
+                const y = (pos.y * -.5 + .5) * window.innerHeight;
+
+                label.style.display = 'block';
+                label.style.transform = `translate(-50%, -100%)`;
+                label.style.left = `${x}px`;
+                label.style.top = `${y}px`;
+            });
+        }
+
+        function clearRoom() {
+            furnitureObjects.forEach(obj => { scene.remove(obj); removeLabelElement(obj); });
+            furnitureObjects = [];
+            deselectObject();
+        }
+
+        function deleteSelected() {
+            if(selectedObject) {
+                scene.remove(selectedObject);
+                removeLabelElement(selectedObject);
+                furnitureObjects = furnitureObjects.filter(obj => obj !== selectedObject);
+                deselectObject();
+            }
+        }
+
+        function saveSceneAsImage() {
+            renderer.render(scene, camera);
+            try {
+                const imgData = renderer.domElement.toDataURL("image/png");
+                const link = document.createElement('a');
+                link.download = `room_design_${new Date().getTime()}.png`;
+                link.href = imgData;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (e) {
+                console.error("이미지 저장 실패", e);
+                alert("이미지 저장 실패.");
+            }
+        }
+
+        function toggleView() {
+            is2D = !is2D;
+            updateCameraPosition();
+            document.getElementById('toggleViewBtn').textContent = is2D ? "3D 뷰로 전환" : "평면도(2D)로 전환";
+        }
+
+        function updateCameraPosition() {
+            if (is2D) {
+                camera.position.set(0, Math.max(currentRoomW, currentRoomH) * 1.5, 0);
+                camera.lookAt(0, 0, 0);
+            } else {
+                camera.position.set(currentRoomW * 0.8, 40, currentRoomH * 0.8);
+                camera.lookAt(0, 0, 0);
+            }
+            camera.updateProjectionMatrix();
+        }
+
+        function selectObject(obj) {
+            if(selectedObject && selectedObject !== obj) deselectObject();
+            selectedObject = obj;
+            
+            if(selectedObject.material && selectedObject.material.emissive) {
+                if(!selectedObject.userData.currentEmissive) {
+                     selectedObject.userData.currentEmissive = selectedObject.material.emissive.getHex();
+                }
+                selectedObject.material.emissive.setHex(0x666666);
+            }
+
+            const panel = document.getElementById('selection-panel');
+            panel.style.display = 'block';
+            document.getElementById('selected-name').textContent = obj.userData.label;
+            
+            document.getElementById('scaleX').value = obj.scale.x;
+            document.getElementById('scaleZ').value = obj.scale.z;
+            
+            let degrees = Math.round(obj.rotation.y * 180 / Math.PI);
+            if(degrees < 0) degrees += 360; 
+            document.getElementById('rotation').value = degrees % 360;
+
+            // 선택 즉시 치수 표시 업데이트
+            updateLabelText(obj);
+        }
+
+        function deselectObject() {
+            if(selectedObject) {
+                if(selectedObject.material && selectedObject.material.emissive) {
+                     const orig = selectedObject.userData.currentEmissive || 0x000000;
+                     selectedObject.material.emissive.setHex(orig);
+                }
+            }
+            selectedObject = null;
+            document.getElementById('selection-panel').style.display = 'none';
+        }
+
+        function resizeSelected() {
+            if(!selectedObject) return;
+            const sx = parseFloat(document.getElementById('scaleX').value);
+            const sz = parseFloat(document.getElementById('scaleZ').value);
+            selectedObject.scale.set(sx, 1, sz);
+            updateLabelText(selectedObject);
+        }
+
+        function rotateSelected() {
+            if(!selectedObject) return;
+            const degrees = parseInt(document.getElementById('rotation').value);
+            selectedObject.rotation.y = degrees * Math.PI / 180;
+        }
+
+        function getIntersects(event, element) {
+            raycaster.setFromCamera(mouse, camera);
+            return raycaster.intersectObjects(furnitureObjects, false);
+        }
+
+        function onTouchStart(event) { event.preventDefault(); onMouseDown(event); }
+        function onTouchMove(event) { event.preventDefault(); onMouseMove(event); }
+
+        function updateMouseCoords(event, element) {
+            const rect = element.getBoundingClientRect();
+            let clientX, clientY;
+            if (event.changedTouches) {
+                clientX = event.changedTouches[0].clientX;
+                clientY = event.changedTouches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function onMouseDown(event) {
+            updateMouseCoords(event, renderer.domElement);
+            const intersects = getIntersects(event, renderer.domElement);
+
+            if (intersects.length > 0) {
+                let target = intersects[0].object;
+                while(target.parent && target.parent.type !== 'Scene') target = target.parent;
+
+                if (furnitureObjects.includes(target)) {
+                    isDragging = true;
+                    selectObject(target);
+                    const planeIntersects = raycaster.intersectObject(plane);
+                    if (planeIntersects.length > 0) {
+                        offset.copy(planeIntersects[0].point).sub(selectedObject.position);
+                    }
+                }
+            } else {
+                raycaster.setFromCamera(mouse, camera);
+                const planeTest = raycaster.intersectObject(plane);
+                if(planeTest.length > 0) deselectObject();
+            }
+        }
+
+        function onMouseMove(event) {
+            event.preventDefault();
+            updateMouseCoords(event, renderer.domElement);
+
+            if(isDragging) {
+                document.body.style.cursor = 'move';
+            } else {
+                const intersects = getIntersects(event, renderer.domElement);
+                document.body.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
+            }
+
+            if (isDragging && selectedObject) {
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObject(plane);
+                
+                if (intersects.length > 0) {
+                    const newPos = intersects[0].point.sub(offset);
+                    
+                    const rot = selectedObject.rotation.y;
+                    const baseW = selectedObject.userData.baseW;
+                    const baseD = selectedObject.userData.baseD;
+                    const scaleX = selectedObject.scale.x;
+                    const scaleZ = selectedObject.scale.z;
+
+                    const currentBoxW = Math.abs(Math.cos(rot) * baseW * scaleX) + Math.abs(Math.sin(rot) * baseD * scaleZ);
+                    const currentBoxD = Math.abs(Math.sin(rot) * baseW * scaleX) + Math.abs(Math.cos(rot) * baseD * scaleZ);
+
+                    const limitX = (currentRoomW / 2) - (currentBoxW / 2);
+                    const limitZ = (currentRoomH / 2) - (currentBoxD / 2);
+                    
+                    const clampedX = limitX > 0 ? Math.max(-limitX, Math.min(limitX, newPos.x)) : 0;
+                    const clampedZ = limitZ > 0 ? Math.max(-limitZ, Math.min(limitZ, newPos.z)) : 0;
+
+                    selectedObject.position.x = clampedX;
+                    selectedObject.position.z = clampedZ;
+                }
+            }
+        }
+
+        function onMouseUp(event) { isDragging = false; }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+            updateLabelsPosition();
+        }
+
+        init();
+    </script>
+</body>
+</html>
